@@ -173,6 +173,15 @@ const BookmarkCards = ({
 );
 
 /**
+ * 打开扩展设置页，便于用户管理同步与快捷键配置。
+ * 入参：无。
+ * 出参：Promise<void>。
+ */
+const openOptionsPage = async (): Promise<void> => {
+  await browser.runtime.openOptionsPage();
+};
+
+/**
  * Popup 主界面：负责目录选择、书签筛选与拖拽移动交互。
  */
 export const PopupApp = () => {
@@ -476,13 +485,23 @@ export const PopupApp = () => {
             <h1 className="text-lg font-semibold tracking-wide">Bookmark Atlas</h1>
             <p className="text-xs text-slate-500">左侧目录，右侧内容，支持拖拽移动</p>
           </div>
-          <button
-            className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700"
-            onClick={() => void load()}
-            type="button"
-          >
-            刷新
-          </button>
+          {/* 顶栏操作区：提供设置入口与刷新入口 */}
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+              onClick={() => void openOptionsPage()}
+              type="button"
+            >
+              设置
+            </button>
+            <button
+              className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700"
+              onClick={() => void load()}
+              type="button"
+            >
+              刷新
+            </button>
+          </div>
         </div>
         {/* 搜索区域：始终在全局范围搜索标题和 URL */}
         <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
