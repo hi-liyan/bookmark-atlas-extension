@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { browser } from '../shared/browser';
 import type { BookmarkIndexItem } from '../shared/types';
+import { BookmarkFavicon } from './bookmark-favicon';
 import { usePopupStore } from './store';
 import { loadPopupViewState, savePopupViewState } from './view-state-storage';
 import { sanitizePopupViewStateSnapshot } from './view-state';
@@ -165,13 +166,19 @@ const BookmarkCards = ({
         }}
         onContextMenu={(event) => onOpenContextMenu(event, item)}
       >
-        {/* 书签主信息区域：标题 + URL */}
-        <h3 className="mb-1 line-clamp-1 text-sm font-semibold text-slate-800">
-          {item.title || '未命名书签'}
-        </h3>
-        <p className="mb-2 line-clamp-1 text-xs text-slate-500">{item.url ?? '-'}</p>
-        {/* 路径提示区域：用于帮助识别当前书签来源目录 */}
-        <p className="text-xs text-slate-400">{item.path.join(' / ') || '根目录'}</p>
+        {/* 书签主信息区域：左侧 favicon + 右侧标题、URL 与路径 */}
+        <div className="flex items-start gap-2">
+          {/* 站点图标：优先使用浏览器/站点 favicon，失败时回退字母占位 */}
+          <BookmarkFavicon url={item.url} title={item.title} sizeClassName="mt-0.5 h-5 w-5" />
+          <div className="min-w-0 flex-1">
+            <h3 className="mb-1 line-clamp-1 text-sm font-semibold text-slate-800">
+              {item.title || '未命名书签'}
+            </h3>
+            <p className="mb-2 line-clamp-1 text-xs text-slate-500">{item.url ?? '-'}</p>
+            {/* 路径提示区域：用于帮助识别当前书签来源目录 */}
+            <p className="text-xs text-slate-400">{item.path.join(' / ') || '根目录'}</p>
+          </div>
+        </div>
       </article>
     ))}
   </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { browser } from '../shared/browser';
 import type { BookmarkIndexItem, RuntimeResponse } from '../shared/types';
+import { BookmarkFavicon } from './bookmark-favicon';
 import { buildQuickSearchResults, clampHighlightIndex } from './quick-search-service';
 
 /**
@@ -173,11 +174,18 @@ export const QuickSearchApp = () => {
                       }}
                       type="button"
                     >
-                      <p className="line-clamp-1 text-sm font-medium">{item.title || '未命名书签'}</p>
-                      <p className="line-clamp-1 text-xs text-slate-500">{item.url ?? '-'}</p>
-                      <p className="mt-1 line-clamp-1 text-xs text-slate-400">
-                        {item.path.join(' / ') || '根目录'}
-                      </p>
+                      {/* 搜索项主体：左侧 favicon + 右侧标题、URL 与路径 */}
+                      <div className="flex items-start gap-2">
+                        {/* 站点图标：与主 popup 保持同一渲染策略 */}
+                        <BookmarkFavicon url={item.url} title={item.title} sizeClassName="mt-0.5 h-5 w-5" />
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-1 text-sm font-medium">{item.title || '未命名书签'}</p>
+                          <p className="line-clamp-1 text-xs text-slate-500">{item.url ?? '-'}</p>
+                          <p className="mt-1 line-clamp-1 text-xs text-slate-400">
+                            {item.path.join(' / ') || '根目录'}
+                          </p>
+                        </div>
+                      </div>
                     </button>
                   </li>
                 );
