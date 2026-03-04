@@ -9,6 +9,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(__dirname, 'popup.html'),
+        quickSearch: resolve(__dirname, 'quick-search.html'),
         options: resolve(__dirname, 'options.html'),
         backgroundPage: resolve(__dirname, 'background.html'),
         background: resolve(__dirname, 'src/background/index.ts')
