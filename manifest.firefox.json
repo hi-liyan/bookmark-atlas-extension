@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Bookmark Atlas",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Firefox-first bookmark atlas extension.",
   "icons": {
     "512": "icons/icon512.png"
@@ -18,8 +18,8 @@
   "commands": {
     "open-quick-search": {
       "suggested_key": {
-        "default": "Ctrl+Shift+Y",
-        "mac": "Command+Shift+Y"
+        "default": "Ctrl+Shift+V",
+        "mac": "Command+Shift+V"
       },
       "description": "Open quick bookmark search"
     }
