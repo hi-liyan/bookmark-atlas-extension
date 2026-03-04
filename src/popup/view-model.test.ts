@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { BookmarkIndexItem, BookmarkNode } from '../shared/types';
-import { buildFolderTree, filterBookmarks, ROOT_FOLDER_ID } from './view-model';
+import {
+  buildFolderTree,
+  collectAllFolderIds,
+  collectFolderSubtreeIds,
+  filterBookmarks,
+  ROOT_FOLDER_ID
+} from './view-model';
 
 /**
  * 生成测试用书签节点，避免每个用例重复构造样板数据。
@@ -69,39 +75,74 @@ describe('filterBookmarks', () => {
       })
     ];
 
-    const result = filterBookmarks(items, ROOT_FOLDER_ID, '');
+    const result = filterBookmarks(items, ROOT_FOLDER_ID, null, '');
     expect(result.map((item) => item.id)).toEqual(['1']);
   });
 
-  it('should filter by folder and query together', () => {
+  it('should include children folders when selecting parent folder', () => {
+    const folderTree = buildFolderTree([
+      createFolder('0', '', [createFolder('10', 'Work', [createFolder('11', 'Project')])])
+    ]);
     const items = [
       createItem({
         id: '1',
         title: 'Alpha Doc',
         titleNorm: 'alpha doc',
         parentId: '10',
+        path: ['Work', 'Project'],
+        urlNorm: 'https://alpha.dev'
+      }),
+      createItem({
+        id: '2',
+        title: 'Child Note',
+        titleNorm: 'child note',
+        parentId: '11',
+        path: ['Work', 'Project'],
+        urlNorm: 'https://child.dev'
+      })
+    ];
+
+    const subtreeIds = collectFolderSubtreeIds(folderTree, '10');
+    const result = filterBookmarks(items, '10', subtreeIds, '');
+    expect(result.map((item) => item.id)).toEqual(['1', '2']);
+  });
+
+  it('should search globally when query is not empty', () => {
+    const items = [
+      createItem({
+        id: '1',
+        title: 'Alpha',
+        titleNorm: 'alpha',
+        parentId: '10',
         path: ['Work'],
         urlNorm: 'https://alpha.dev'
       }),
       createItem({
         id: '2',
-        title: 'Beta Note',
-        titleNorm: 'beta note',
-        parentId: '10',
-        path: ['Work'],
-        urlNorm: 'https://beta.dev'
-      }),
-      createItem({
-        id: '3',
-        title: 'Gamma',
-        titleNorm: 'gamma',
+        title: 'Beta',
+        titleNorm: 'beta',
         parentId: '20',
         path: ['Life'],
-        urlNorm: 'https://gamma.dev'
+        urlNorm: 'https://beta.dev'
       })
     ];
 
-    const result = filterBookmarks(items, '10', 'beta');
+    const result = filterBookmarks(items, '10', new Set<string>(['10']), 'beta');
     expect(result.map((item) => item.id)).toEqual(['2']);
+  });
+});
+
+describe('folder utility functions', () => {
+  it('should collect all folder ids in tree', () => {
+    const folderTree = buildFolderTree([
+      createFolder('0', '', [createFolder('10', 'A', [createFolder('11', 'B')]), createFolder('12', 'C')])
+    ]);
+
+    expect(collectAllFolderIds(folderTree)).toEqual(['10', '11', '12']);
+  });
+
+  it('should return empty set when subtree root is missing', () => {
+    const folderTree = buildFolderTree([createFolder('0', '', [createFolder('10', 'A')])]);
+    expect(Array.from(collectFolderSubtreeIds(folderTree, '404'))).toEqual([]);
   });
 });

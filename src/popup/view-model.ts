@@ -87,30 +87,103 @@ export const flattenFolderTree = (folderTree: FolderViewNode[]): Map<string, Fol
 };
 
 /**
+ * 收集目录树中的全部目录 id。
+ * 入参：目录树。
+ * 出参：目录 id 数组（用于“全部展开/全部收起”）。
+ */
+export const collectAllFolderIds = (folderTree: FolderViewNode[]): string[] => {
+  const ids: string[] = [];
+
+  /**
+   * 深度优先收集目录 id，保证父节点先于子节点。
+   */
+  const visit = (nodes: FolderViewNode[]): void => {
+    nodes.forEach((node) => {
+      ids.push(node.id);
+      if (node.children.length > 0) {
+        visit(node.children);
+      }
+    });
+  };
+
+  visit(folderTree);
+  return ids;
+};
+
+/**
+ * 获取指定目录及其所有子目录的 id 集合。
+ * 入参：目录树、目标目录 id。
+ * 出参：子树目录 id 集合；若目录不存在则返回空集合。
+ */
+export const collectFolderSubtreeIds = (
+  folderTree: FolderViewNode[],
+  folderId: string
+): Set<string> => {
+  /**
+   * 在目录树中查找目标目录节点。
+   */
+  const findFolder = (nodes: FolderViewNode[]): FolderViewNode | null => {
+    for (const node of nodes) {
+      if (node.id === folderId) {
+        return node;
+      }
+      if (node.children.length > 0) {
+        const found = findFolder(node.children);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    return null;
+  };
+
+  const target = findFolder(folderTree);
+  if (!target) {
+    return new Set<string>();
+  }
+
+  const ids = new Set<string>();
+
+  /**
+   * 收集目标目录整棵子树的目录 id。
+   */
+  const collect = (node: FolderViewNode): void => {
+    ids.add(node.id);
+    node.children.forEach((child) => collect(child));
+  };
+
+  collect(target);
+  return ids;
+};
+
+/**
  * 按目录与搜索词过滤书签列表。
- * 入参：索引书签、选中目录 id、搜索词。
+ * 入参：索引书签、选中目录 id、选中目录子树 id 集合、搜索词。
  * 出参：符合条件的书签列表。
  */
 export const filterBookmarks = (
   items: BookmarkIndexItem[],
   selectedFolderId: string,
+  selectedFolderSubtreeIds: Set<string> | null,
   query: string
 ): BookmarkIndexItem[] => {
   const queryNorm = normalizeText(query);
 
   return items.filter((item) => {
+    // 搜索栏始终全局生效：有搜索词时忽略目录筛选，仅做全量匹配。
+    if (queryNorm) {
+      return item.titleNorm.includes(queryNorm) || item.urlNorm.includes(queryNorm);
+    }
+
     // 根目录展示“未归入任何目录路径”的书签。
     const matchesFolder =
-      selectedFolderId === ROOT_FOLDER_ID ? item.path.length === 0 : item.parentId === selectedFolderId;
+      selectedFolderId === ROOT_FOLDER_ID
+        ? item.path.length === 0
+        : Boolean(item.parentId && selectedFolderSubtreeIds?.has(item.parentId));
 
     if (!matchesFolder) {
       return false;
     }
-
-    if (!queryNorm) {
-      return true;
-    }
-
-    return item.titleNorm.includes(queryNorm) || item.urlNorm.includes(queryNorm);
+    return true;
   });
 };
