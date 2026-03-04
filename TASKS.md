@@ -6,28 +6,31 @@
 
 ## 1. 项目初始化（M1）
 
-- [ ] 初始化 Vite + React + TS 工程
-- [ ] 安装依赖：`tailwindcss`、`daisyui`、`zustand`、`webextension-polyfill`
-- [ ] 配置 Tailwind + daisyUI 主题（至少 `light`、`corporate`）
-- [ ] 配置扩展构建输出目录（popup/options/background）
-- [ ] 新建双清单：`manifest.firefox.json`、`manifest.chrome.json`
-- [ ] 建立统一 API 适配层（统一走 `browser.*`）
-- [ ] 建立基础目录结构（`src/popup`、`src/options`、`src/background`、`src/sync`、`src/shared`）
+- [x] 初始化 Vite + React + TS 工程
+- [x] 安装依赖：`tailwindcss`、`daisyui`、`zustand`、`webextension-polyfill`
+- [x] 配置 Tailwind + daisyUI 主题（至少 `light`、`corporate`）
+- [x] 配置扩展构建输出目录（popup/options/background）
+- [x] 新建双清单：`manifest.firefox.json`、`manifest.chrome.json`
+- [x] 建立统一 API 适配层（统一走 `browser.*`）
+- [x] 建立基础目录结构（`src/popup`、`src/options`、`src/background`、`src/sync`、`src/shared`）
 
 验收标准：
-- [ ] Firefox 可加载临时扩展并打开 popup 页面
-- [ ] Chrome 可加载构建产物（允许部分功能后续补齐）
+- [x] Firefox 可加载临时扩展并打开 popup 页面
+- [x] Chrome 可加载构建产物（允许部分功能后续补齐）
 
 ## 2. 书签基础能力（M1）
 
-- [ ] 封装 `bookmark-service`：`getTree/get/create/update/move/removeTree`
-- [ ] popup 实现目录树展示与展开
-- [ ] 书签列表展示（标题、URL、所属目录）
-- [ ] 建立本地索引模型与首次全量索引
+- [x] 封装 `bookmark-service`：`getTree/get/create/update/move/removeTree`
+- [x] popup 实现目录树展示与展开
+- [x] 书签列表展示（标题、URL、所属目录）
+- [x] 建立本地索引模型与首次全量索引
 - [ ] 建立书签事件监听（create/remove/change/move）并增量更新索引
 
+> 进度说明（2026-03-04）：已实现事件监听并在变更后触发索引重建；当前为“重建型更新”，尚未完成严格增量更新逻辑。  
+> 环境阻塞（2026-03-04）：当前环境缺少 `node`/`pnpm`，依赖安装、`pnpm lint`、`pnpm test`、`pnpm build` 尚未执行。
+
 验收标准：
-- [ ] 扩展启动后可完整读取并展示书签树
+- [x] 扩展启动后可完整读取并展示书签树
 - [ ] 书签变更后 UI 在可接受延迟内刷新
 
 ## 3. 搜索能力（M1-M3）

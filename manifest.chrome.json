@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Bookmark Manager",
+  "version": "0.1.0",
+  "description": "Firefox-first bookmark manager extension.",
+  "permissions": ["bookmarks", "storage", "alarms"],
+  "host_permissions": [],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Bookmark Manager",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html"
+}

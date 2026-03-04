@@ -1,0 +1,23 @@
+{
+  "manifest_version": 2,
+  "name": "Bookmark Manager",
+  "version": "0.1.0",
+  "description": "Firefox-first bookmark manager extension.",
+  "permissions": ["bookmarks", "storage", "alarms"],
+  "background": {
+    "page": "background.html"
+  },
+  "browser_action": {
+    "default_title": "Bookmark Manager",
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "applications": {
+    "gecko": {
+      "id": "bookmark-manager@example.com"
+    }
+  }
+}
