@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEven
 import { browser } from '../shared/browser';
 import type { BookmarkIndexItem } from '../shared/types';
 import { usePopupStore } from './store';
+import { loadPopupViewState, savePopupViewState } from './view-state-storage';
+import { sanitizePopupViewStateSnapshot } from './view-state';
 import {
   buildFolderTree,
   collectAllFolderIds,
@@ -199,11 +201,41 @@ export const PopupApp = () => {
   const folderElementMapRef = useRef<Map<string, HTMLButtonElement>>(new Map<string, HTMLButtonElement>());
   const pendingScrollFolderIdRef = useRef<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const hasStoredViewStateRef = useRef(false);
+  const hasInitializedExpandStateRef = useRef(false);
+  const [viewStateHydrated, setViewStateHydrated] = useState(false);
   const isSearchMode = query.trim().length > 0;
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * 初始化时恢复 popup 视图状态，保证重新打开后保留上次筛选与目录展开状态。
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const storedState = await loadPopupViewState();
+      if (cancelled) {
+        return;
+      }
+
+      hasStoredViewStateRef.current = Boolean(storedState);
+      if (storedState) {
+        setQuery(storedState.query);
+        setSelectedFolderId(storedState.selectedFolderId);
+        setExpandedFolderIds(new Set<string>(storedState.expandedFolderIds));
+      }
+
+      setViewStateHydrated(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setQuery, setSelectedFolderId]);
 
   const folderTree = useMemo(() => buildFolderTree(tree), [tree]);
   const allFolderIds = useMemo(() => collectAllFolderIds(folderTree), [folderTree]);
@@ -216,9 +248,27 @@ export const PopupApp = () => {
   const allExpanded = allFolderIds.length > 0 && allFolderIds.every((folderId) => expandedFolderIds.has(folderId));
 
   useEffect(() => {
-    // 目录数据刷新后默认展开全部，确保层级结构首次可见。
-    setExpandedFolderIds(new Set<string>(allFolderIds));
-  }, [allFolderIds]);
+    if (!viewStateHydrated) {
+      return;
+    }
+
+    const validFolderIds = new Set<string>(allFolderIds);
+    setExpandedFolderIds((previous) => {
+      const cleanedExpandedFolderIds = new Set<string>(
+        Array.from(previous).filter((folderId) => validFolderIds.has(folderId))
+      );
+
+      // 首次初始化时，无历史状态才默认展开全部；之后仅清理失效目录，避免覆盖用户操作。
+      if (!hasInitializedExpandStateRef.current) {
+        hasInitializedExpandStateRef.current = true;
+        if (!hasStoredViewStateRef.current) {
+          return new Set<string>(allFolderIds);
+        }
+      }
+
+      return cleanedExpandedFolderIds;
+    });
+  }, [allFolderIds, viewStateHydrated]);
 
   /**
    * 在目录节点渲染完成后执行滚动定位，确保用户能看到目标目录。
@@ -279,6 +329,26 @@ export const PopupApp = () => {
       setSelectedFolderId(ROOT_FOLDER_ID);
     }
   }, [folderMap, selectedFolderId, setSelectedFolderId]);
+
+  /**
+   * 监听 popup 关键视图状态变化并持久化，供下次打开时恢复。
+   */
+  useEffect(() => {
+    if (!viewStateHydrated) {
+      return;
+    }
+
+    const validFolderIds = new Set<string>(allFolderIds);
+    const snapshot = sanitizePopupViewStateSnapshot(
+      {
+        query,
+        selectedFolderId,
+        expandedFolderIds: Array.from(expandedFolderIds)
+      },
+      validFolderIds
+    );
+    void savePopupViewState(snapshot);
+  }, [allFolderIds, expandedFolderIds, query, selectedFolderId, viewStateHydrated]);
 
   const selectedFolderTitle =
     isSearchMode
