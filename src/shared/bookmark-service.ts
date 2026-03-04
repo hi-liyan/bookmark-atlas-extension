@@ -42,6 +42,10 @@ export const bookmarkService = {
     return fromTreeNode(moved);
   },
 
+  async remove(id: string): Promise<void> {
+    await browser.bookmarks.remove(id);
+  },
+
   async removeTree(id: string): Promise<void> {
     await browser.bookmarks.removeTree(id);
   }

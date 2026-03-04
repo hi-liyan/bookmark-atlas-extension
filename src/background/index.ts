@@ -80,6 +80,19 @@ browser.runtime.onMessage.addListener(
         return { ok: true, movedId: request.bookmarkId };
       }
 
+      if (request.type === 'bookmarks/update') {
+        await bookmarkService.update(request.bookmarkId, {
+          title: request.title,
+          url: request.url
+        });
+        return { ok: true, updatedId: request.bookmarkId };
+      }
+
+      if (request.type === 'bookmarks/delete') {
+        await bookmarkService.remove(request.bookmarkId);
+        return { ok: true, deletedId: request.bookmarkId };
+      }
+
       return { ok: false, error: 'Unsupported request type.' };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

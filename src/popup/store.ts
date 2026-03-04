@@ -15,6 +15,8 @@ interface PopupState {
   setQuery: (value: string) => void;
   setSelectedFolderId: (folderId: string) => void;
   moveBookmark: (bookmarkId: string, parentId: string) => Promise<void>;
+  updateBookmark: (bookmarkId: string, title: string, url: string) => Promise<void>;
+  deleteBookmark: (bookmarkId: string) => Promise<void>;
 }
 
 /**
@@ -25,6 +27,8 @@ const request = async <T extends RuntimeResponse>(
     | { type: 'bookmarks/get-tree' }
     | { type: 'bookmarks/get-index' }
     | { type: 'bookmarks/move'; bookmarkId: string; parentId: string }
+    | { type: 'bookmarks/update'; bookmarkId: string; title: string; url: string }
+    | { type: 'bookmarks/delete'; bookmarkId: string }
 ): Promise<T> => {
   const response = (await browser.runtime.sendMessage(message)) as T;
   return response;
@@ -84,6 +88,50 @@ export const usePopupStore = create<PopupState>((set, get) => ({
       await get().load();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to move bookmark.';
+      set({ error: message });
+    } finally {
+      set({ moving: false });
+    }
+  },
+  updateBookmark: async (bookmarkId: string, title: string, url: string) => {
+    set({ moving: true, error: '' });
+
+    try {
+      const response = await request<RuntimeResponse>({
+        type: 'bookmarks/update',
+        bookmarkId,
+        title,
+        url
+      });
+      if (!response.ok) {
+        throw new Error(response.error);
+      }
+
+      // 编辑成功后刷新索引，保证搜索与展示一致。
+      await get().load();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update bookmark.';
+      set({ error: message });
+    } finally {
+      set({ moving: false });
+    }
+  },
+  deleteBookmark: async (bookmarkId: string) => {
+    set({ moving: true, error: '' });
+
+    try {
+      const response = await request<RuntimeResponse>({
+        type: 'bookmarks/delete',
+        bookmarkId
+      });
+      if (!response.ok) {
+        throw new Error(response.error);
+      }
+
+      // 删除成功后刷新索引，避免展示脏数据。
+      await get().load();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete bookmark.';
       set({ error: message });
     } finally {
       set({ moving: false });

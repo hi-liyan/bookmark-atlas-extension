@@ -3,7 +3,7 @@
   "name": "Bookmark Manager",
   "version": "0.1.0",
   "description": "Firefox-first bookmark manager extension.",
-  "permissions": ["bookmarks", "storage", "alarms"],
+  "permissions": ["bookmarks", "storage", "alarms", "tabs"],
   "host_permissions": [],
   "background": {
     "service_worker": "background.js",
