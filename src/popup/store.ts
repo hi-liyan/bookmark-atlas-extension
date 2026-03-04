@@ -26,6 +26,7 @@ const request = async <T extends RuntimeResponse>(
   message:
     | { type: 'bookmarks/get-tree' }
     | { type: 'bookmarks/get-index' }
+    | { type: 'bookmarks/rebuild-index' }
     | { type: 'bookmarks/move'; bookmarkId: string; parentId: string }
     | { type: 'bookmarks/update'; bookmarkId: string; title: string; url: string }
     | { type: 'bookmarks/delete'; bookmarkId: string }
@@ -107,7 +108,13 @@ export const usePopupStore = create<PopupState>((set, get) => ({
         throw new Error(response.error);
       }
 
-      // 编辑成功后刷新索引，保证搜索与展示一致。
+      // 编辑成功后主动重建一次索引，避免依赖事件异步重建导致 popup 读取到旧缓存。
+      const rebuildResponse = await request<RuntimeResponse>({ type: 'bookmarks/rebuild-index' });
+      if (!rebuildResponse.ok) {
+        throw new Error(rebuildResponse.error);
+      }
+
+      // 索引重建成功后再加载页面数据，确保列表来自浏览器最新书签状态。
       await get().load();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update bookmark.';

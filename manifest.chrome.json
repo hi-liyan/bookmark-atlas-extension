@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Bookmark Manager",
+  "name": "Bookmark Atlas",
   "version": "0.1.0",
-  "description": "Firefox-first bookmark manager extension.",
+  "description": "Firefox-first bookmark atlas extension.",
   "permissions": ["bookmarks", "storage", "alarms", "tabs"],
   "host_permissions": [],
   "background": {
@@ -10,7 +10,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Bookmark Manager",
+    "default_title": "Bookmark Atlas",
     "default_popup": "popup.html"
   },
   "commands": {

@@ -1,14 +1,14 @@
 {
   "manifest_version": 2,
-  "name": "Bookmark Manager",
+  "name": "Bookmark Atlas",
   "version": "0.1.0",
-  "description": "Firefox-first bookmark manager extension.",
+  "description": "Firefox-first bookmark atlas extension.",
   "permissions": ["bookmarks", "storage", "alarms", "tabs"],
   "background": {
     "page": "background.html"
   },
   "browser_action": {
-    "default_title": "Bookmark Manager",
+    "default_title": "Bookmark Atlas",
     "default_popup": "popup.html"
   },
   "commands": {
@@ -24,9 +24,12 @@
     "page": "options.html",
     "open_in_tab": true
   },
-  "applications": {
+  "browser_specific_settings": {
     "gecko": {
-      "id": "bookmark-manager@example.com"
+      "id": "bookmark-atlas@iyucode.com",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   }
 }
