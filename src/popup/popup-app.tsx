@@ -127,6 +127,7 @@ const FolderTree = ({
 const BookmarkCards = ({
   items,
   draggingBookmarkId,
+  isDragMoveMode,
   isSearchMode,
   onStartDragging,
   onOpenBookmarkFolder,
@@ -134,6 +135,7 @@ const BookmarkCards = ({
 }: {
   items: BookmarkIndexItem[];
   draggingBookmarkId: string | null;
+  isDragMoveMode: boolean;
   isSearchMode: boolean;
   onStartDragging: (bookmarkId: string) => void;
   onOpenBookmarkFolder: (item: BookmarkIndexItem) => void;
@@ -145,9 +147,12 @@ const BookmarkCards = ({
         key={item.id}
         className={`rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition ${
           draggingBookmarkId === item.id ? 'opacity-60' : ''
-        }`}
-        draggable
+        } ${isDragMoveMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
+        draggable={isDragMoveMode}
         onDragStart={(event) => {
+          if (!isDragMoveMode) {
+            return;
+          }
           event.dataTransfer.setData('text/bookmark-id', item.id);
           event.dataTransfer.effectAllowed = 'move';
           onStartDragging(item.id);
@@ -202,6 +207,7 @@ export const PopupApp = () => {
   } = usePopupStore();
   const [draggingBookmarkId, setDraggingBookmarkId] = useState<string | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
+  const [isDragMoveMode, setIsDragMoveMode] = useState(false);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set<string>());
   const [contextMenu, setContextMenu] = useState<BookmarkContextMenuState | null>(null);
   const [editingDraft, setEditingDraft] = useState<EditBookmarkDraft | null>(null);
@@ -402,7 +408,7 @@ export const PopupApp = () => {
   const openContextMenu = (event: ReactMouseEvent<HTMLElement>, item: BookmarkIndexItem): void => {
     event.preventDefault();
     const MENU_WIDTH = 190;
-    const MENU_HEIGHT = 196;
+    const MENU_HEIGHT = 236;
     const EDGE_PADDING = 8;
 
     const x = Math.max(
@@ -415,6 +421,23 @@ export const PopupApp = () => {
     );
 
     setContextMenu({ x, y, item });
+  };
+
+  /**
+   * 进入拖拽移动模式：默认关闭拖拽，只有用户明确点击“移动”才开启。
+   */
+  const enterDragMoveMode = (): void => {
+    setIsDragMoveMode(true);
+    setContextMenu(null);
+  };
+
+  /**
+   * 退出拖拽移动模式并清理拖拽中间态，避免残留高亮影响后续操作。
+   */
+  const exitDragMoveMode = (): void => {
+    setIsDragMoveMode(false);
+    setDraggingBookmarkId(null);
+    setDropTargetFolderId(null);
   };
 
   /**
@@ -483,7 +506,7 @@ export const PopupApp = () => {
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
             <h1 className="text-lg font-semibold tracking-wide">Bookmark Atlas</h1>
-            <p className="text-xs text-slate-500">左侧目录，右侧内容，支持拖拽移动</p>
+            <p className="text-xs text-slate-500">左侧目录，右侧内容，右键书签可开启移动模式</p>
           </div>
           {/* 顶栏操作区：提供设置入口与刷新入口 */}
           <div className="flex items-center gap-2">
@@ -503,6 +526,19 @@ export const PopupApp = () => {
             </button>
           </div>
         </div>
+        {isDragMoveMode ? (
+          <div className="mb-2 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            {/* 拖拽模式提示区：明确当前可拖拽，避免误操作 */}
+            <span className="text-xs font-medium text-amber-800">拖拽移动模式</span>
+            <button
+              className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs text-amber-800 transition hover:bg-amber-100"
+              onClick={exitDragMoveMode}
+              type="button"
+            >
+              退出
+            </button>
+          </div>
+        ) : null}
         {/* 搜索区域：始终在全局范围搜索标题和 URL */}
         <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
           <span className="text-slate-400">⌕</span>
@@ -572,9 +608,22 @@ export const PopupApp = () => {
                   return next;
                 });
               }}
-              onDragOverFolder={(folderId) => setDropTargetFolderId(folderId)}
-              onDragLeaveFolder={() => setDropTargetFolderId(null)}
+              onDragOverFolder={(folderId) => {
+                if (!isDragMoveMode) {
+                  return;
+                }
+                setDropTargetFolderId(folderId);
+              }}
+              onDragLeaveFolder={() => {
+                if (!isDragMoveMode) {
+                  return;
+                }
+                setDropTargetFolderId(null);
+              }}
               onDropToFolder={(folderId) => {
+                if (!isDragMoveMode) {
+                  return;
+                }
                 if (!draggingBookmarkId) {
                   return;
                 }
@@ -612,6 +661,7 @@ export const PopupApp = () => {
               <BookmarkCards
                 items={filteredItems}
                 draggingBookmarkId={draggingBookmarkId}
+                isDragMoveMode={isDragMoveMode}
                 isSearchMode={isSearchMode}
                 onStartDragging={setDraggingBookmarkId}
                 onOpenBookmarkFolder={locateBookmarkFolder}
@@ -652,6 +702,15 @@ export const PopupApp = () => {
             type="button"
           >
             在当前标签页中打开
+          </button>
+          <div className="my-1 border-t border-slate-200" />
+          {/* 右键移动入口：显式开启拖拽模式，默认不允许拖动卡片。 */}
+          <button
+            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+            onClick={enterDragMoveMode}
+            type="button"
+          >
+            移动到其他目录
           </button>
           <div className="my-1 border-t border-slate-200" />
           <button
