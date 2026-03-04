@@ -31,12 +31,14 @@ export interface BookmarkIndexSnapshot {
 export type RuntimeRequest =
   | { type: 'bookmarks/get-tree' }
   | { type: 'bookmarks/get-index' }
-  | { type: 'bookmarks/rebuild-index' };
+  | { type: 'bookmarks/rebuild-index' }
+  | { type: 'bookmarks/move'; bookmarkId: string; parentId: string };
 
 export type RuntimeResponse =
   | { ok: true; tree: BookmarkNode[] }
   | { ok: true; index: BookmarkIndexSnapshot }
   | { ok: true; rebuiltAt: number }
+  | { ok: true; movedId: string }
   | { ok: false; error: string };
 
 export type SyncMode = 'two-way' | 'push-only' | 'pull-only';

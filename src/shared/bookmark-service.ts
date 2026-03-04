@@ -1,10 +1,10 @@
 import { browser } from './browser';
 import type { BookmarkNode } from './types';
 
-const toNodeType = (node: browser.Bookmarks.BookmarkTreeNode): 'bookmark' | 'folder' =>
+const toNodeType = (node: browser.bookmarks.BookmarkTreeNode): 'bookmark' | 'folder' =>
   node.url ? 'bookmark' : 'folder';
 
-const fromTreeNode = (node: browser.Bookmarks.BookmarkTreeNode): BookmarkNode => ({
+const fromTreeNode = (node: browser.bookmarks.BookmarkTreeNode): BookmarkNode => ({
   id: node.id,
   parentId: node.parentId,
   type: toNodeType(node),
@@ -27,17 +27,17 @@ export const bookmarkService = {
     return nodes.map(fromTreeNode);
   },
 
-  async create(input: browser.Bookmarks.CreateDetailsType): Promise<BookmarkNode> {
+  async create(input: browser.bookmarks.CreateDetails): Promise<BookmarkNode> {
     const created = await browser.bookmarks.create(input);
     return fromTreeNode(created);
   },
 
-  async update(id: string, changes: browser.Bookmarks.UpdateChangesType): Promise<BookmarkNode> {
+  async update(id: string, changes: browser.bookmarks._UpdateChanges): Promise<BookmarkNode> {
     const updated = await browser.bookmarks.update(id, changes);
     return fromTreeNode(updated);
   },
 
-  async move(id: string, destination: browser.Bookmarks.DestinationType): Promise<BookmarkNode> {
+  async move(id: string, destination: browser.bookmarks._MoveDestination): Promise<BookmarkNode> {
     const moved = await browser.bookmarks.move(id, destination);
     return fromTreeNode(moved);
   },

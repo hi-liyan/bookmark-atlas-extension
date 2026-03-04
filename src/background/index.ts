@@ -75,6 +75,11 @@ browser.runtime.onMessage.addListener(
         return { ok: true, rebuiltAt: index.updatedAt };
       }
 
+      if (request.type === 'bookmarks/move') {
+        await bookmarkService.move(request.bookmarkId, { parentId: request.parentId });
+        return { ok: true, movedId: request.bookmarkId };
+      }
+
       return { ok: false, error: 'Unsupported request type.' };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
