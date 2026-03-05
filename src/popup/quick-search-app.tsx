@@ -345,7 +345,7 @@ export const QuickSearchApp = () => {
                       }}
                       className={`w-full rounded-xl border px-3 py-2 text-left transition ${
                         isActive
-                          ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                          ? 'border-[#138052]/35 bg-[#138052]/12 text-[#138052]'
                           : 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50'
                       }`}
                       onMouseEnter={() => setActiveIndex(index)}
@@ -418,7 +418,7 @@ export const QuickSearchApp = () => {
             <h3 className="mb-3 text-base font-semibold text-slate-800">编辑标签</h3>
             <label className="mb-2 block text-xs font-medium text-slate-600">标签标题</label>
             <input
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               disabled={submittingAction}
               value={editingDraft.title}
               onChange={(event) =>
@@ -430,7 +430,7 @@ export const QuickSearchApp = () => {
             />
             <label className="mb-2 block text-xs font-medium text-slate-600">标签 URL</label>
             <input
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               disabled={submittingAction}
               value={editingDraft.url}
               onChange={(event) =>

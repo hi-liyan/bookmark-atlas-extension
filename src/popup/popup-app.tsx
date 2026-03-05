@@ -119,7 +119,7 @@ const BookmarkRow = ({
   return (
     <article
       className={`rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition ${
-        isDragging ? 'cursor-grabbing opacity-60 ring-2 ring-emerald-300' : ''
+        isDragging ? 'cursor-grabbing opacity-60 ring-2 ring-[#138052]/35' : ''
       }`}
       draggable={dragEnabled}
       onMouseDownCapture={(event) => {
@@ -228,8 +228,8 @@ const BookmarkTree = ({
               <button
                 ref={(element) => registerFolderElement(node.id, element)}
                 className={`flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                  selected ? 'bg-emerald-100 text-emerald-900 shadow-sm' : 'text-slate-700 hover:bg-slate-100'
-                } ${dropTarget ? 'ring-2 ring-emerald-300' : ''} ${
+                  selected ? 'bg-[#138052]/12 text-[#138052] shadow-sm' : 'text-slate-700 hover:bg-slate-100'
+                } ${dropTarget ? 'ring-2 ring-[#138052]/35' : ''} ${
                   draggingFolder ? 'cursor-grabbing opacity-60 ring-2 ring-cyan-300' : ''
                 }`}
                 draggable
@@ -923,9 +923,9 @@ export const PopupApp = () => {
                     }}
                     className={`flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition ${
                       selectedFolderId === ROOT_FOLDER_ID
-                        ? 'bg-emerald-100 text-emerald-900 shadow-sm'
+                        ? 'bg-[#138052]/12 text-[#138052] shadow-sm'
                         : 'text-slate-700 hover:bg-slate-100'
-                    } ${dropTargetFolderId === ROOT_FOLDER_ID ? 'ring-2 ring-emerald-300' : ''}`}
+                    } ${dropTargetFolderId === ROOT_FOLDER_ID ? 'ring-2 ring-[#138052]/35' : ''}`}
                     onClick={() => setSelectedFolderId(ROOT_FOLDER_ID)}
                     onDoubleClick={() => {
                       setExpandedFolderIds((previous) => {
@@ -1144,14 +1144,14 @@ export const PopupApp = () => {
             <h3 className="mb-3 text-base font-semibold text-slate-800">编辑书签</h3>
             <label className="mb-2 block text-xs font-medium text-slate-600">标题</label>
             <input
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               value={editingDraft.title}
               onChange={(event) => setEditingDraft((previous) => (previous ? { ...previous, title: event.target.value } : previous))}
               type="text"
             />
             <label className="mb-2 block text-xs font-medium text-slate-600">URL</label>
             <input
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               value={editingDraft.url}
               onChange={(event) => setEditingDraft((previous) => (previous ? { ...previous, url: event.target.value } : previous))}
               type="url"
@@ -1172,7 +1172,7 @@ export const PopupApp = () => {
             <label className="mb-2 block text-xs font-medium text-slate-600">文件夹名称</label>
             <input
               autoFocus
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               value={createFolderDraft.title}
               onChange={(event) => setCreateFolderDraft((previous) => (previous ? { ...previous, title: event.target.value } : previous))}
               type="text"
@@ -1194,7 +1194,7 @@ export const PopupApp = () => {
             <label className="mb-2 block text-xs font-medium text-slate-600">文件夹名称</label>
             <input
               autoFocus
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               value={renameFolderDraft.title}
               onChange={(event) => setRenameFolderDraft((previous) => (previous ? { ...previous, title: event.target.value } : previous))}
               type="text"
@@ -1214,7 +1214,7 @@ export const PopupApp = () => {
             <h3 className="mb-3 text-base font-semibold text-slate-800">新建书签</h3>
             <label className="mb-2 block text-xs font-medium text-slate-600">标题</label>
             <input
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               value={createBookmarkDraft.title}
               onChange={(event) => setCreateBookmarkDraft((previous) => (previous ? { ...previous, title: event.target.value } : previous))}
               type="text"
@@ -1222,7 +1222,7 @@ export const PopupApp = () => {
             <label className="mb-2 block text-xs font-medium text-slate-600">URL</label>
             <input
               autoFocus
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               value={createBookmarkDraft.url}
               onChange={(event) => setCreateBookmarkDraft((previous) => (previous ? { ...previous, url: event.target.value } : previous))}
               type="url"
