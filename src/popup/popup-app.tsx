@@ -417,6 +417,8 @@ export const PopupApp = () => {
   const folderTree = useMemo(() => buildFolderTree(tree), [tree]);
   const folderMap = useMemo(() => flattenFolderTree(folderTree), [folderTree]);
   const browserRootFolderId = useMemo(() => resolveBrowserRootFolderId(tree), [tree]);
+  // 仅在目录树真实加载完成后，才执行视图状态的清洗与持久化，避免空树阶段覆盖历史状态。
+  const hasLoadedTree = !loading && tree.length > 0;
   const allFolderIds = useMemo(() => [ROOT_FOLDER_ID, ...collectAllFolderIds(folderTree)], [folderTree]);
   const allExpanded = allFolderIds.length > 0 && allFolderIds.every((folderId) => expandedFolderIds.has(folderId));
 
@@ -476,7 +478,7 @@ export const PopupApp = () => {
   }, [folderBookmarkMap, folderTree, queryNorm]);
 
   useEffect(() => {
-    if (!viewStateHydrated) {
+    if (!viewStateHydrated || !hasLoadedTree) {
       return;
     }
 
@@ -495,7 +497,7 @@ export const PopupApp = () => {
 
       return cleanedExpandedFolderIds;
     });
-  }, [allFolderIds, viewStateHydrated]);
+  }, [allFolderIds, hasLoadedTree, viewStateHydrated]);
 
   useEffect(() => {
     const pendingFolderId = pendingScrollFolderIdRef.current;
@@ -513,6 +515,10 @@ export const PopupApp = () => {
   }, [expandedFolderIds, folderTree]);
 
   useEffect(() => {
+    if (!hasLoadedTree) {
+      return;
+    }
+
     if (selectedFolderId === ROOT_FOLDER_ID) {
       return;
     }
@@ -520,10 +526,10 @@ export const PopupApp = () => {
     if (!folderMap.has(selectedFolderId)) {
       setSelectedFolderId(ROOT_FOLDER_ID);
     }
-  }, [folderMap, selectedFolderId, setSelectedFolderId]);
+  }, [folderMap, hasLoadedTree, selectedFolderId, setSelectedFolderId]);
 
   useEffect(() => {
-    if (!viewStateHydrated) {
+    if (!viewStateHydrated || !hasLoadedTree) {
       return;
     }
 
@@ -536,7 +542,7 @@ export const PopupApp = () => {
       new Set<string>(allFolderIds)
     );
     void savePopupViewState(snapshot);
-  }, [allFolderIds, expandedFolderIds, query, selectedFolderId, viewStateHydrated]);
+  }, [allFolderIds, expandedFolderIds, hasLoadedTree, query, selectedFolderId, viewStateHydrated]);
 
   useEffect(() => {
     const handleMouseDown = (event: MouseEvent): void => {
