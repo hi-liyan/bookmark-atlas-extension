@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { browser } from '../shared/browser';
 import type { BookmarkIndexItem, BookmarkNode, RuntimeResponse } from '../shared/types';
-import { applyBookmarkEditOptimistically } from './index-items';
+import { applyBookmarkDeleteOptimistically, applyBookmarkEditOptimistically } from './index-items';
 import { ROOT_FOLDER_ID } from './view-model';
 
 interface PopupState {
@@ -17,7 +17,7 @@ interface PopupState {
   setSelectedFolderId: (folderId: string) => void;
   moveBookmark: (bookmarkId: string, parentId: string) => Promise<void>;
   updateBookmark: (bookmarkId: string, title: string, url: string) => Promise<boolean>;
-  deleteBookmark: (bookmarkId: string) => Promise<void>;
+  deleteBookmark: (bookmarkId: string) => Promise<boolean>;
 }
 
 /**
@@ -131,6 +131,11 @@ export const usePopupStore = create<PopupState>((set, get) => ({
   deleteBookmark: async (bookmarkId: string) => {
     set({ moving: true, error: '' });
 
+    const previousItems = get().items;
+    set({
+      items: applyBookmarkDeleteOptimistically(previousItems, bookmarkId)
+    });
+
     try {
       const response = await request<RuntimeResponse>({
         type: 'bookmarks/delete',
@@ -140,11 +145,12 @@ export const usePopupStore = create<PopupState>((set, get) => ({
         throw new Error(response.error);
       }
 
-      // 删除成功后刷新索引，避免展示脏数据。
-      await get().load();
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete bookmark.';
-      set({ error: message });
+      // 后端失败时回滚本地乐观删除，保证列表与真实数据一致。
+      set({ items: previousItems, error: message });
+      return false;
     } finally {
       set({ moving: false });
     }

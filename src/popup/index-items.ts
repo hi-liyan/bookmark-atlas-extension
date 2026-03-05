@@ -34,3 +34,15 @@ export const applyBookmarkEditOptimistically = (
     };
   });
 };
+
+/**
+ * 对索引列表应用书签删除结果，用于 UI 的乐观更新。
+ * 入参：当前索引列表、待删除书签 ID。
+ * 出参：删除目标项后的新索引列表。
+ */
+export const applyBookmarkDeleteOptimistically = (
+  items: BookmarkIndexItem[],
+  bookmarkId: string
+): BookmarkIndexItem[] => {
+  return items.filter((item) => item.id !== bookmarkId);
+};

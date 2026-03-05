@@ -499,13 +499,18 @@ export const PopupApp = () => {
   };
 
   /**
-   * 执行删除书签，删除前通过独立确认弹窗进行二次确认。
+   * 执行删除书签：采用乐观更新，失败时保留确认弹窗便于重试。
    */
   const confirmDeleteBookmark = async (): Promise<void> => {
     if (!deletingItem) {
       return;
     }
-    await deleteBookmark(deletingItem.id);
+
+    const deleted = await deleteBookmark(deletingItem.id);
+    if (!deleted) {
+      return;
+    }
+
     setDeletingItem(null);
     setContextMenu(null);
   };

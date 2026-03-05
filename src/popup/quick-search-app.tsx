@@ -152,7 +152,7 @@ export const QuickSearchApp = () => {
   }, [contextMenu, deletingItem, editingDraft]);
 
   /**
-   * 重新拉取快捷搜索索引数据，供删除后刷新列表。
+   * 重新拉取快捷搜索索引数据，供初始化加载时写入列表。
    * 入参：无。
    * 出参：Promise<void>。
    */
@@ -238,7 +238,7 @@ export const QuickSearchApp = () => {
   };
 
   /**
-   * 确认删除标签：满足二次确认后执行删除并刷新结果。
+   * 确认删除标签：先乐观移除列表项，失败时回滚并提示错误。
    * 入参：无。
    * 出参：Promise<void>。
    */
@@ -249,13 +249,19 @@ export const QuickSearchApp = () => {
 
     setSubmittingAction(true);
     setActionError('');
+
+    const targetBookmarkId = deletingItem.id;
+    const previousItems = allItems;
+    setAllItems((items) => items.filter((item) => item.id !== targetBookmarkId));
+
     try {
-      await deleteTagFromQuickSearch(deletingItem.id);
-      await reloadItems();
+      await deleteTagFromQuickSearch(targetBookmarkId);
       setDeletingItem(null);
       setContextMenu(null);
     } catch (deleteError) {
       const message = deleteError instanceof Error ? deleteError.message : '删除标签失败';
+      // 删除失败时回滚乐观更新，避免列表丢失但实际数据仍存在。
+      setAllItems(previousItems);
       setActionError(message);
     } finally {
       setSubmittingAction(false);

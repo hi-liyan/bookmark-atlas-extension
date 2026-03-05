@@ -1,5 +1,5 @@
 import type { BookmarkIndexItem } from '../shared/types';
-import { applyBookmarkEditOptimistically } from './index-items';
+import { applyBookmarkDeleteOptimistically, applyBookmarkEditOptimistically } from './index-items';
 
 /**
  * 构造测试用书签项，避免每个用例重复声明基础字段。
@@ -48,6 +48,24 @@ describe('applyBookmarkEditOptimistically', () => {
       title: 'No Change',
       url: 'https://none.com'
     });
+
+    expect(nextItems).toEqual(items);
+  });
+});
+
+describe('applyBookmarkDeleteOptimistically', () => {
+  it('should remove the target bookmark item', () => {
+    const items: BookmarkIndexItem[] = [createItem({ id: '1' }), createItem({ id: '2' })];
+
+    const nextItems = applyBookmarkDeleteOptimistically(items, '1');
+
+    expect(nextItems.map((item) => item.id)).toEqual(['2']);
+  });
+
+  it('should keep items unchanged when target bookmark does not exist', () => {
+    const items: BookmarkIndexItem[] = [createItem({ id: '1' })];
+
+    const nextItems = applyBookmarkDeleteOptimistically(items, 'missing');
 
     expect(nextItems).toEqual(items);
   });
