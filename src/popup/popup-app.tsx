@@ -74,6 +74,11 @@ interface DeleteFolderDraft {
   title: string;
 }
 
+interface RenameFolderDraft {
+  id: string;
+  title: string;
+}
+
 /**
  * 目录图标：用于在目录名称前提供统一视觉标识。
  * 入参：无。
@@ -295,6 +300,7 @@ export const PopupApp = () => {
     createFolder,
     createBookmark,
     deleteFolder,
+    renameFolder,
     updateBookmark,
     deleteBookmark
   } = usePopupStore();
@@ -307,9 +313,11 @@ export const PopupApp = () => {
   const [createFolderDraft, setCreateFolderDraft] = useState<CreateFolderDraft | null>(null);
   const [createBookmarkDraft, setCreateBookmarkDraft] = useState<CreateBookmarkDraft | null>(null);
   const [deleteFolderDraft, setDeleteFolderDraft] = useState<DeleteFolderDraft | null>(null);
+  const [renameFolderDraft, setRenameFolderDraft] = useState<RenameFolderDraft | null>(null);
   const [deletingItem, setDeletingItem] = useState<BookmarkIndexItem | null>(null);
   const [editFormError, setEditFormError] = useState('');
   const [folderFormError, setFolderFormError] = useState('');
+  const [renameFormError, setRenameFormError] = useState('');
   const [bookmarkFormError, setBookmarkFormError] = useState('');
 
   const folderElementMapRef = useRef<Map<string, HTMLButtonElement>>(new Map<string, HTMLButtonElement>());
@@ -508,7 +516,7 @@ export const PopupApp = () => {
     event.preventDefault();
     const isRoot = folderId === ROOT_FOLDER_ID;
     const createParentId = isRoot ? browserRootFolderId : folderId;
-    const position = clampMenuPosition(event.clientX, event.clientY, 198, 172);
+    const position = clampMenuPosition(event.clientX, event.clientY, 198, 208);
 
     setContextMenu({ kind: 'folder', x: position.x, y: position.y, folderId, title, canDelete: !isRoot, createParentId });
   };
@@ -575,6 +583,29 @@ export const PopupApp = () => {
     setSelectedFolderId(createdFolderId);
     setCreateFolderDraft(null);
     pendingScrollFolderIdRef.current = createdFolderId;
+  };
+
+  /**
+   * \u63d0\u4ea4\u76ee\u5f55\u91cd\u547d\u540d\uff1a\u6821\u9a8c\u8f93\u5165\u540e\u8c03\u7528 store\uff0c\u5e76\u5728\u6210\u529f\u65f6\u5173\u95ed\u5f39\u7a97\u3002
+   */
+  const submitRenameFolder = async (): Promise<void> => {
+    if (!renameFolderDraft) {
+      return;
+    }
+
+    const title = renameFolderDraft.title.trim();
+    if (!title) {
+      setRenameFormError('文件夹名称不能为空');
+      return;
+    }
+
+    setRenameFormError('');
+    const renamed = await renameFolder(renameFolderDraft.id, title);
+    if (!renamed) {
+      return;
+    }
+
+    setRenameFolderDraft(null);
   };
 
   const submitCreateBookmark = async (): Promise<void> => {
@@ -887,6 +918,19 @@ export const PopupApp = () => {
               >
                 新建书签
               </button>
+              <button
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                disabled={!contextMenu.canDelete}
+                onClick={() => {
+                  if (!contextMenu.canDelete) {
+                    return;
+                  }
+                  setRenameFolderDraft({ id: contextMenu.folderId, title: contextMenu.title });
+                  setRenameFormError('');
+                  setContextMenu(null);
+                }}
+                type="button"
+              >重命名</button>
               <div className="my-1 border-t border-slate-200" />
               <button
                 className="w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
@@ -950,6 +994,28 @@ export const PopupApp = () => {
             <div className="mt-4 flex justify-end gap-2">
               <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100" onClick={() => setCreateFolderDraft(null)} type="button">取消</button>
               <button className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white transition hover:bg-slate-700" onClick={() => void submitCreateFolder()} type="button">创建</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {renameFolderDraft ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+            {/* \u91cd\u547d\u540d\u5f39\u7a97\uff1a\u7528\u4e8e\u4fee\u6539\u76ee\u5f55\u540d\u79f0\uff0c\u907f\u514d\u8bef\u89e6\u5220\u9664\u3002 */}
+            <h3 className="mb-3 text-base font-semibold text-slate-800">重命名文件夹</h3>
+            <label className="mb-2 block text-xs font-medium text-slate-600">文件夹名称</label>
+            <input
+              autoFocus
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              value={renameFolderDraft.title}
+              onChange={(event) => setRenameFolderDraft((previous) => (previous ? { ...previous, title: event.target.value } : previous))}
+              type="text"
+            />
+            {renameFormError ? <p className="mt-2 text-xs text-rose-600">{renameFormError}</p> : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100" onClick={() => setRenameFolderDraft(null)} type="button">取消</button>
+              <button className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white transition hover:bg-slate-700" onClick={() => void submitRenameFolder()} type="button">保存</button>
             </div>
           </div>
         </div>

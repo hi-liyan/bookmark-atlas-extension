@@ -8,6 +8,7 @@ import {
   applyBookmarkMoveOptimistically,
   removeBookmarksInFoldersOptimistically,
   removeFolderSubtreeOptimistically,
+  renameFolderOptimistically,
   replaceBookmarkOptimistically,
   replaceFolderOptimistically
 } from './index-items';
@@ -168,6 +169,26 @@ describe('folder optimistic mutations', () => {
     });
 
     expect(replacedTree[0]?.children?.[0]?.children?.[0]).toMatchObject({ id: '20' });
+  });
+
+  /**
+   * 验证仅重命名目标目录，且其子节点与同级目录保持不变。
+   */
+  it('should rename target folder only and keep subtree unchanged', () => {
+    const tree: BookmarkNode[] = [
+      createFolder('0', '', [
+        createFolder('10', 'Work', [createFolder('11', 'Project')]),
+        createFolder('20', 'Life')
+      ])
+    ];
+
+    const renamedTree = renameFolderOptimistically(tree, '10', '  WorkSpace  ');
+    const targetFolder = renamedTree[0]?.children?.find((node) => node.id === '10');
+    const untouchedFolder = renamedTree[0]?.children?.find((node) => node.id === '20');
+
+    expect(targetFolder?.title).toBe('WorkSpace');
+    expect(targetFolder?.children?.[0]?.title).toBe('Project');
+    expect(untouchedFolder?.title).toBe('Life');
   });
 
   it('should remove target folder subtree and related bookmark items', () => {

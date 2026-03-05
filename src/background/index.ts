@@ -196,6 +196,14 @@ browser.runtime.onMessage.addListener(async (request: RuntimeRequest): Promise<R
       return { ok: true, deletedFolderId: request.folderId };
     }
 
+    if (request.type === 'bookmarks/rename-folder') {
+      await bookmarkService.update(request.folderId, {
+        title: request.title
+      });
+      await rebuildIndexFresh();
+      return { ok: true, renamedFolderId: request.folderId };
+    }
+
     if (request.type === 'bookmarks/update') {
       await bookmarkService.update(request.bookmarkId, {
         title: request.title,

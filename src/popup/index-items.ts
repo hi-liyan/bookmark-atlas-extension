@@ -282,6 +282,58 @@ export const replaceFolderOptimistically = (
   return replaceRecursively(tree);
 };
 
+
+/**
+ * 在目录树中乐观更新目标目录名称。
+ * 入参：当前树、目标目录 ID、新名称。
+ * 出参：更新后的新树；若未命中目录则返回原树。
+ */
+export const renameFolderOptimistically = (
+  tree: BookmarkNode[],
+  folderId: string,
+  title: string
+): BookmarkNode[] => {
+  const nextTitle = title.trim();
+
+  /**
+   * 递归查找目录并仅在命中路径上创建新引用，避免整树重建。
+   */
+  const renameRecursively = (nodes: BookmarkNode[]): { changed: boolean; nodes: BookmarkNode[] } => {
+    let changed = false;
+    const nextNodes = nodes.map((node) => {
+      if (node.id === folderId && node.type === 'folder') {
+        changed = true;
+        return {
+          ...node,
+          title: nextTitle
+        };
+      }
+
+      if (!node.children?.length) {
+        return node;
+      }
+
+      const childResult = renameRecursively(node.children);
+      if (!childResult.changed) {
+        return node;
+      }
+
+      changed = true;
+      return {
+        ...node,
+        children: childResult.nodes
+      };
+    });
+
+    return {
+      changed,
+      nodes: changed ? nextNodes : nodes
+    };
+  };
+
+  return renameRecursively(tree).nodes;
+};
+
 /**
  * 从目录树中移除目标目录整棵子树，并返回被移除的目录 ID 集合。
  * 入参：当前树、待删除目录 ID。

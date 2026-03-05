@@ -10,6 +10,7 @@ import {
   buildFolderPathMap,
   removeBookmarksInFoldersOptimistically,
   removeFolderSubtreeOptimistically,
+  renameFolderOptimistically,
   replaceBookmarkOptimistically,
   replaceFolderOptimistically
 } from './index-items';
@@ -30,6 +31,7 @@ interface PopupState {
   createFolder: (parentId: string, title: string) => Promise<string | null>;
   createBookmark: (parentId: string, title: string, url: string) => Promise<boolean>;
   deleteFolder: (folderId: string) => Promise<boolean>;
+  renameFolder: (folderId: string, title: string) => Promise<boolean>;
   updateBookmark: (bookmarkId: string, title: string, url: string) => Promise<boolean>;
   deleteBookmark: (bookmarkId: string) => Promise<boolean>;
 }
@@ -276,6 +278,49 @@ export const usePopupStore = create<PopupState>((set, get) => ({
         selectedFolderId: previousSelectedFolderId,
         error: message
       });
+      return false;
+    } finally {
+      set({ moving: false });
+    }
+  },
+
+  /**
+   * 重命名目录：本地先行乐观更新，失败时回滚。
+   */
+  renameFolder: async (folderId: string, title: string) => {
+    if (folderId === ROOT_FOLDER_ID) {
+      set({ error: '根目录不支持重命名' });
+      return false;
+    }
+
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      set({ error: '目录名称不能为空' });
+      return false;
+    }
+
+    set({ moving: true, error: '' });
+
+    const previousTree = get().tree;
+    set({
+      tree: renameFolderOptimistically(previousTree, folderId, trimmedTitle)
+    });
+
+    try {
+      const response = await request({
+        type: 'bookmarks/rename-folder',
+        folderId,
+        title: trimmedTitle
+      });
+      if (!response.ok) {
+        throw new Error(response.error);
+      }
+
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to rename folder.';
+      // \u540e\u7aef\u5931\u8d25\u65f6\u56de\u6eda\u76ee\u5f55\u6811\uff0c\u907f\u514d\u76ee\u5f55\u540d\u4e0e\u771f\u5b9e\u6570\u636e\u957f\u671f\u4e0d\u4e00\u81f4\u3002
+      set({ tree: previousTree, error: message });
       return false;
     } finally {
       set({ moving: false });

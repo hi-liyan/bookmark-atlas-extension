@@ -36,6 +36,7 @@ export type RuntimeRequest =
   | { type: 'bookmarks/create-folder'; parentId: string; title: string }
   | { type: 'bookmarks/create-bookmark'; parentId: string; title: string; url: string }
   | { type: 'bookmarks/delete-folder'; folderId: string }
+  | { type: 'bookmarks/rename-folder'; folderId: string; title: string }
   | { type: 'bookmarks/update'; bookmarkId: string; title: string; url: string }
   | { type: 'bookmarks/delete'; bookmarkId: string };
 
@@ -46,6 +47,7 @@ export type RuntimeResponse =
   | { ok: true; movedId: string }
   | { ok: true; created: BookmarkNode }
   | { ok: true; deletedFolderId: string }
+  | { ok: true; renamedFolderId: string }
   | { ok: true; updatedId: string }
   | { ok: true; deletedId: string }
   | { ok: false; error: string };
