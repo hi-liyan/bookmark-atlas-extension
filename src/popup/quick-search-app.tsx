@@ -1,42 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { browser } from '../shared/browser';
-import type { BookmarkIndexItem, RuntimeResponse } from '../shared/types';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import type { BookmarkIndexItem } from '../shared/types';
 import { BookmarkFavicon } from './bookmark-favicon';
+import {
+  buildEditTagDraft,
+  deleteTagFromQuickSearch,
+  type EditTagDraft,
+  loadBookmarkItems,
+  openBookmarkInNewTab,
+  updateTagFromQuickSearch,
+  validateEditTagDraft
+} from './quick-search-actions';
 import { buildQuickSearchResults, clampHighlightIndex } from './quick-search-service';
 
-/**
- * 请求背景页书签索引，为快捷搜索提供数据源。
- * 入参：无。
- * 出参：书签索引项数组。
- */
-const loadBookmarkItems = async (): Promise<BookmarkIndexItem[]> => {
-  const response = (await browser.runtime.sendMessage({
-    type: 'bookmarks/get-index'
-  })) as RuntimeResponse;
-
-  if (!response.ok || !('index' in response)) {
-    throw new Error(response.ok ? 'Invalid index response.' : response.error);
-  }
-
-  return response.index.items;
-};
+interface BookmarkContextMenuState {
+  x: number;
+  y: number;
+  item: BookmarkIndexItem;
+}
 
 /**
- * 打开目标书签到新标签页，并关闭当前快捷搜索窗口。
- * 入参：书签索引项。
- * 出参：Promise<void>。
- */
-const openBookmarkInNewTab = async (item: BookmarkIndexItem): Promise<void> => {
-  if (!item.url) {
-    return;
-  }
-
-  await browser.tabs.create({ url: item.url });
-  window.close();
-};
-
-/**
- * 快捷搜索主界面：支持键盘导航、回车打开与鼠标点击打开。
+ * 快捷搜索主界面：支持键盘导航、回车打开与标签编辑删除。
  */
 export const QuickSearchApp = () => {
   const [allItems, setAllItems] = useState<BookmarkIndexItem[]>([]);
@@ -44,8 +27,15 @@ export const QuickSearchApp = () => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [editingDraft, setEditingDraft] = useState<EditTagDraft | null>(null);
+  const [deletingItem, setDeletingItem] = useState<BookmarkIndexItem | null>(null);
+  const [editFormError, setEditFormError] = useState('');
+  const [submittingAction, setSubmittingAction] = useState(false);
+  const [contextMenu, setContextMenu] = useState<BookmarkContextMenuState | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +87,136 @@ export const QuickSearchApp = () => {
     resultItemRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex]);
 
+  /**
+   * 统一关闭右键菜单：点击菜单外区域或按下 Esc 时触发。
+   * 入参：无。
+   * 出参：void。
+   */
+  useEffect(() => {
+    const handleMouseDown = (event: MouseEvent): void => {
+      if (!contextMenuRef.current) {
+        return;
+      }
+      if (!contextMenuRef.current.contains(event.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setContextMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  /**
+   * 重新拉取快捷搜索索引数据，供编辑/删除后刷新列表。
+   * 入参：无。
+   * 出参：Promise<void>。
+   */
+  const reloadItems = async (): Promise<void> => {
+    const items = await loadBookmarkItems();
+    setAllItems(items);
+  };
+
+  /**
+   * 打开右键菜单，并在窗口边界内修正坐标防止溢出。
+   * 入参：鼠标事件、当前书签项、结果索引。
+   * 出参：void。
+   */
+  const openContextMenu = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    item: BookmarkIndexItem,
+    index: number
+  ): void => {
+    event.preventDefault();
+    const MENU_WIDTH = 170;
+    const MENU_HEIGHT = 96;
+    const EDGE_PADDING = 8;
+
+    const x = Math.max(
+      EDGE_PADDING,
+      Math.min(event.clientX, window.innerWidth - MENU_WIDTH - EDGE_PADDING)
+    );
+    const y = Math.max(
+      EDGE_PADDING,
+      Math.min(event.clientY, window.innerHeight - MENU_HEIGHT - EDGE_PADDING)
+    );
+
+    setActiveIndex(index);
+    setContextMenu({ x, y, item });
+  };
+
+  /**
+   * 提交标签编辑：先校验表单，再更新书签并重载索引。
+   * 入参：无。
+   * 出参：Promise<void>。
+   */
+  const submitEditTag = async (): Promise<void> => {
+    if (!editingDraft) {
+      return;
+    }
+
+    const validation = validateEditTagDraft(editingDraft);
+    if (!validation.ok) {
+      setEditFormError(validation.error);
+      return;
+    }
+
+    setSubmittingAction(true);
+    setActionError('');
+    setEditFormError('');
+    try {
+      // 提交前先清洗空白字符，避免标题与 URL 因首尾空格导致脏数据。
+      const normalizedDraft: EditTagDraft = {
+        ...editingDraft,
+        title: validation.title,
+        url: validation.url
+      };
+      await updateTagFromQuickSearch(normalizedDraft);
+      await reloadItems();
+      setEditingDraft(null);
+      setContextMenu(null);
+    } catch (submitError) {
+      const message = submitError instanceof Error ? submitError.message : '编辑标签失败';
+      setActionError(message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
+  /**
+   * 确认删除标签：满足二次确认后执行删除并刷新结果。
+   * 入参：无。
+   * 出参：Promise<void>。
+   */
+  const confirmDeleteTag = async (): Promise<void> => {
+    if (!deletingItem) {
+      return;
+    }
+
+    setSubmittingAction(true);
+    setActionError('');
+    try {
+      await deleteTagFromQuickSearch(deletingItem.id);
+      await reloadItems();
+      setDeletingItem(null);
+      setContextMenu(null);
+    } catch (deleteError) {
+      const message = deleteError instanceof Error ? deleteError.message : '删除标签失败';
+      setActionError(message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
   return (
     <div className="flex h-full w-full flex-col bg-gradient-to-br from-amber-50 via-lime-50 to-cyan-50 p-2 text-slate-800 sm:p-4">
       {/* 主容器区域：根据窗口大小自适应，避免缩小时内容挤压裁切 */}
@@ -141,13 +261,14 @@ export const QuickSearchApp = () => {
               }}
             />
           </label>
-          <p className="mt-2 text-xs text-slate-500">方向键选择，Enter 新标签打开，Esc 关闭</p>
+          <p className="mt-2 text-xs text-slate-500">方向键选择，Enter 新标签打开，右键可编辑/删除标签</p>
         </header>
 
         {/* 列表区域：展示搜索候选项并支持鼠标点击打开 */}
         <section className="min-h-0 flex-1 rounded-2xl border border-white/70 bg-white/90 p-1.5 shadow-sm sm:p-2">
           {loading ? <div className="px-3 py-4 text-sm text-cyan-700">正在加载书签索引...</div> : null}
           {error ? <div className="px-3 py-4 text-sm text-rose-700">{error}</div> : null}
+          {actionError ? <div className="px-3 py-2 text-sm text-rose-700">{actionError}</div> : null}
           {!loading && !error && results.length === 0 ? (
             <div className="px-3 py-4 text-sm text-slate-500">没有匹配项</div>
           ) : null}
@@ -158,7 +279,7 @@ export const QuickSearchApp = () => {
                 const isActive = index === activeIndex;
                 return (
                   <li key={item.id}>
-                    {/* 结果项按钮：高亮当前键盘选中项，支持点击直接打开 */}
+                    {/* 结果项按钮：高亮当前键盘选中项，支持点击打开与右键菜单 */}
                     <button
                       ref={(element) => {
                         resultItemRefs.current[index] = element;
@@ -169,6 +290,7 @@ export const QuickSearchApp = () => {
                           : 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50'
                       }`}
                       onMouseEnter={() => setActiveIndex(index)}
+                      onContextMenu={(event) => openContextMenu(event, item, index)}
                       onClick={() => {
                         void openBookmarkInNewTab(item);
                       }}
@@ -194,6 +316,130 @@ export const QuickSearchApp = () => {
           ) : null}
         </section>
       </div>
+
+      {contextMenu ? (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-30 w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {/* 右键菜单：承载快捷搜索内的标签编辑与删除操作 */}
+          <button
+            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={submittingAction}
+            onClick={() => {
+              setActionError('');
+              setEditFormError('');
+              setEditingDraft(buildEditTagDraft(contextMenu.item));
+              setContextMenu(null);
+            }}
+            type="button"
+          >
+            编辑标签
+          </button>
+          <button
+            className="w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={submittingAction}
+            onClick={() => {
+              setActionError('');
+              setDeletingItem(contextMenu.item);
+              setContextMenu(null);
+            }}
+            type="button"
+          >
+            删除标签
+          </button>
+        </div>
+      ) : null}
+
+      {editingDraft ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
+          {/* 标签编辑弹窗：支持直接修改标题与 URL */}
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+            <h3 className="mb-3 text-base font-semibold text-slate-800">编辑标签</h3>
+            <label className="mb-2 block text-xs font-medium text-slate-600">标签标题</label>
+            <input
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              disabled={submittingAction}
+              value={editingDraft.title}
+              onChange={(event) =>
+                setEditingDraft((previous) =>
+                  previous ? { ...previous, title: event.target.value } : previous
+                )
+              }
+              type="text"
+            />
+            <label className="mb-2 block text-xs font-medium text-slate-600">标签 URL</label>
+            <input
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              disabled={submittingAction}
+              value={editingDraft.url}
+              onChange={(event) =>
+                setEditingDraft((previous) =>
+                  previous ? { ...previous, url: event.target.value } : previous
+                )
+              }
+              type="url"
+            />
+            {editFormError ? <p className="mt-2 text-xs text-rose-600">{editFormError}</p> : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={submittingAction}
+                onClick={() => {
+                  setEditingDraft(null);
+                  setEditFormError('');
+                }}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={submittingAction}
+                onClick={() => {
+                  void submitEditTag();
+                }}
+                type="button"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deletingItem ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
+          {/* 标签删除确认弹窗：满足二次确认后才执行删除 */}
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+            <h3 className="mb-2 text-base font-semibold text-slate-800">删除标签</h3>
+            <p className="mb-4 text-sm text-slate-600">
+              确认删除“{deletingItem.title || '未命名书签'}”？该操作不可撤销。
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={submittingAction}
+                onClick={() => setDeletingItem(null)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={submittingAction}
+                onClick={() => {
+                  void confirmDeleteTag();
+                }}
+                type="button"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
