@@ -1,6 +1,7 @@
 import { type Dispatch, type SetStateAction, useEffect, useState } from 'react';
 import { browser } from '../shared/browser';
 import type { SyncConfig } from '../shared/types';
+import { testCouchDbConnection, validateConnectionConfig, validateSyncConfigCompleteness } from '../sync';
 
 const STORAGE_KEY = 'sync-config';
 
@@ -31,6 +32,8 @@ interface ShortcutSettingsNavigationResult {
   mode: 'opened' | 'manual';
   manualMessage?: string;
 }
+
+type SyncConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
 /**
  * 将命令名转换为更易懂的中文显示，便于用户识别功能用途。
@@ -111,6 +114,12 @@ export const OptionsApp = () => {
   const [shortcutCommands, setShortcutCommands] = useState<ShortcutCommandView[]>([]);
   const [shortcutError, setShortcutError] = useState('');
   const [shortcutNavError, setShortcutNavError] = useState('');
+  // 同步错误提示：用于展示启用同步前的校验失败原因。
+  const [syncValidationError, setSyncValidationError] = useState('');
+  // 连接测试状态：控制测试按钮禁用与结果提示样式。
+  const [syncConnectionStatus, setSyncConnectionStatus] = useState<SyncConnectionStatus>('idle');
+  // 连接测试信息：展示“测试连接”或启用流程中的连通性结果。
+  const [syncConnectionMessage, setSyncConnectionMessage] = useState('');
   const updateConfig = createConfigUpdater(setConfig);
 
   useEffect(() => {
@@ -152,6 +161,69 @@ export const OptionsApp = () => {
     await browser.storage.local.set({ [STORAGE_KEY]: config });
     setSavedMessage('设置已保存');
     setTimeout(() => setSavedMessage(''), 1500);
+  };
+
+  /**
+   * 执行连接测试并更新连接状态文案。
+   * 入参：无。
+   * 出参：Promise<boolean>，true 表示连接成功。
+   */
+  const runConnectionTest = async (): Promise<boolean> => {
+    setSyncConnectionStatus('testing');
+    setSyncConnectionMessage('正在测试与 CouchDB 的连接...');
+    const result = await testCouchDbConnection(config);
+    setSyncConnectionStatus(result.ok ? 'success' : 'error');
+    setSyncConnectionMessage(result.message);
+    return result.ok;
+  };
+
+  /**
+   * 处理“启用同步”开关：先校验完整性，再校验连接，全部通过才允许启用。
+   * 入参：开关目标状态。
+   * 出参：Promise<void>。
+   */
+  const handleSyncEnabledChange = async (checked: boolean): Promise<void> => {
+    if (!checked) {
+      updateConfig('syncEnabled', false);
+      setSyncValidationError('');
+      return;
+    }
+
+    const issues = validateSyncConfigCompleteness(config);
+    if (issues.length > 0) {
+      updateConfig('syncEnabled', false);
+      setSyncValidationError(issues[0]);
+      setSyncConnectionStatus('error');
+      setSyncConnectionMessage('同步未启用：请先补全连接信息。');
+      return;
+    }
+
+    setSyncValidationError('');
+    const isConnected = await runConnectionTest();
+    if (!isConnected) {
+      updateConfig('syncEnabled', false);
+      return;
+    }
+
+    updateConfig('syncEnabled', true);
+  };
+
+  /**
+   * 手动触发“测试连接”按钮逻辑：先检查表单完整性，再进行网络测试。
+   * 入参：无。
+   * 出参：Promise<void>。
+   */
+  const handleManualConnectionTest = async (): Promise<void> => {
+    const issues = validateConnectionConfig(config);
+    if (issues.length > 0) {
+      setSyncValidationError(issues[0]);
+      setSyncConnectionStatus('error');
+      setSyncConnectionMessage('请先补全连接信息，再执行测试连接。');
+      return;
+    }
+
+    setSyncValidationError('');
+    await runConnectionTest();
   };
 
   /**
@@ -249,18 +321,39 @@ export const OptionsApp = () => {
                   <input
                     checked={config.syncEnabled}
                     className="h-4 w-4 rounded border-slate-300 text-[#138052] focus:ring-[#138052]/30"
-                    onChange={(event) => updateConfig('syncEnabled', event.target.checked)}
+                    onChange={(event) => {
+                      void handleSyncEnabledChange(event.target.checked);
+                    }}
                     type="checkbox"
                   />
                   <span className="text-sm font-medium text-slate-700">启用同步</span>
                 </label>
               </div>
+              {syncValidationError ? <div className="alert alert-error mb-3 text-sm">{syncValidationError}</div> : null}
 
               <div className="space-y-4">
                 {/* 连接信息卡片：配置同步服务地址与认证信息。 */}
                 <section className="rounded-[12px] border border-slate-200 bg-[#EFF3F7]/45 p-4">
-                  <h3 className="text-base font-semibold text-slate-800">连接信息</h3>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <h3 className="text-base font-semibold text-slate-800">连接信息</h3>
+                    {/* 测试连接按钮：用于在保存前快速验证当前连接参数可用性。 */}
+                    <button
+                      className="rounded-lg border border-[#138052]/40 px-3 py-2 text-sm font-medium text-[#138052] transition hover:bg-[#138052]/10 disabled:cursor-not-allowed disabled:opacity-55"
+                      disabled={syncConnectionStatus === 'testing'}
+                      onClick={() => {
+                        void handleManualConnectionTest();
+                      }}
+                      type="button"
+                    >
+                      {syncConnectionStatus === 'testing' ? '测试中...' : '测试连接'}
+                    </button>
+                  </div>
                   <p className="mt-1 text-sm text-slate-500">用于建立与 CouchDB 的连接，建议仅填写当前环境所需配置。</p>
+                  {syncConnectionMessage ? (
+                    <div className={`mt-3 text-sm ${syncConnectionStatus === 'success' ? 'text-[#138052]' : 'text-[#b42318]'}`}>
+                      {syncConnectionMessage}
+                    </div>
+                  ) : null}
                   <div className="mt-4 space-y-3">
                     {/* 服务地址行：左侧标签与说明，右侧输入框。 */}
                     <label className="flex flex-col gap-2 rounded-[10px] border border-slate-200 bg-white p-3 md:flex-row md:items-center md:gap-4">
