@@ -10,6 +10,7 @@ import {
   updateTagFromQuickSearch,
   validateEditTagDraft
 } from './quick-search-actions';
+import { resolveQuickSearchEscapeAction } from './quick-search-keyboard';
 import { buildQuickSearchResults, clampHighlightIndex } from './quick-search-service';
 
 interface BookmarkContextMenuState {
@@ -88,7 +89,7 @@ export const QuickSearchApp = () => {
   }, [activeIndex]);
 
   /**
-   * 统一关闭右键菜单：点击菜单外区域或按下 Esc 时触发。
+   * 统一关闭右键菜单：点击菜单外区域时触发。
    * 入参：无。
    * 出参：void。
    */
@@ -102,19 +103,52 @@ export const QuickSearchApp = () => {
       }
     };
 
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        setContextMenu(null);
-      }
-    };
-
     document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  /**
+   * 统一处理全局 Esc：优先关闭当前层级弹层，最后再关闭快捷搜索窗口。
+   * 入参：无。
+   * 出参：void。
+   */
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.isComposing) {
+        return;
+      }
+
+      const action = resolveQuickSearchEscapeAction({
+        hasEditingDraft: editingDraft !== null,
+        hasDeletingItem: deletingItem !== null,
+        hasContextMenu: contextMenu !== null
+      });
+
+      // 阻止默认行为（例如 search input 内部清空）以保证 Esc 行为稳定一致。
+      event.preventDefault();
+      if (action === 'close-edit-dialog') {
+        setEditingDraft(null);
+        setEditFormError('');
+        return;
+      }
+      if (action === 'close-delete-dialog') {
+        setDeletingItem(null);
+        return;
+      }
+      if (action === 'close-context-menu') {
+        setContextMenu(null);
+        return;
+      }
+      window.close();
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [contextMenu, deletingItem, editingDraft]);
 
   /**
    * 重新拉取快捷搜索索引数据，供编辑/删除后刷新列表。
@@ -254,10 +288,6 @@ export const QuickSearchApp = () => {
                   return;
                 }
 
-                if (event.key === 'Escape') {
-                  event.preventDefault();
-                  window.close();
-                }
               }}
             />
           </label>
