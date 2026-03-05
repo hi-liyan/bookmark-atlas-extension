@@ -4,7 +4,10 @@
   "version": "0.1.1",
   "description": "Firefox-first bookmark atlas extension.",
   "icons": {
-    "512": "icons/icon512.png"
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "permissions": ["bookmarks", "storage", "alarms", "tabs"],
   "background": {
@@ -13,7 +16,12 @@
   "browser_action": {
     "default_title": "Bookmark Atlas",
     "default_popup": "popup.html",
-    "default_icon": "icons/icon512.png"
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "commands": {
     "open-quick-search": {
