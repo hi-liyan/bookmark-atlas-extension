@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { Folder } from 'lucide-react';
 import { browser } from '../shared/browser';
 import { normalizeText } from '../shared/normalize';
 import type { BookmarkIndexItem } from '../shared/types';
@@ -79,23 +80,7 @@ interface DeleteFolderDraft {
  * 出参：目录 SVG 图标。
  */
 const FolderIcon = () => {
-  return (
-    <svg
-      aria-hidden
-      className="h-4 w-4 shrink-0 text-amber-500"
-      fill="none"
-      viewBox="0 0 24 24"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.293a1 1 0 0 1 .707.293l1.207 1.207H18.5A2.5 2.5 0 0 1 21 9v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5v-9Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
+  return <Folder aria-hidden className="h-4 w-4 shrink-0 text-amber-500" strokeWidth={1.75} />;
 };
 
 /**
