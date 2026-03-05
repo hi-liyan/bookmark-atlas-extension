@@ -1,6 +1,6 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
-import { Folder } from 'lucide-react';
+import { Folder, X } from 'lucide-react';
 import { browser } from '../shared/browser';
 import { normalizeText } from '../shared/normalize';
 import type { BookmarkIndexItem } from '../shared/types';
@@ -155,7 +155,9 @@ const BookmarkRow = ({
         {/* 站点图标：优先显示 favicon，失败时回退首字母。 */}
         <BookmarkFavicon url={item.url} title={item.title} sizeClassName="mt-0.5 h-4 w-4" />
         <div className="inline-flex min-w-0 max-w-full flex-col" data-bookmark-text="true">
-          <p className="line-clamp-1 cursor-text select-text text-xs font-medium text-slate-800">{item.title || '未命名书签'}</p>
+          <p className="cursor-text select-text break-all whitespace-normal text-xs font-medium leading-4 text-slate-800">
+            {item.title || '未命名书签'}
+          </p>
           <p className="line-clamp-1 cursor-text select-text text-[11px] text-slate-500">{item.url ?? '-'}</p>
         </div>
       </div>
@@ -252,9 +254,9 @@ const BookmarkTree = ({
                 type="button"
               >
                 {/* 目录图标：明确当前行为目录节点。 */}
-                <div className="inline-flex items-center gap-1.5">
+                <div className="inline-flex items-start gap-1.5">
                   <FolderIcon />
-                  <span className="truncate">{node.title}</span>
+                  <span className="break-all whitespace-normal leading-5">{node.title}</span>
                 </div>
               </button>
             </div>
@@ -385,6 +387,8 @@ export const PopupApp = () => {
   const hasStoredViewStateRef = useRef(false);
   const hasInitializedExpandStateRef = useRef(false);
   const [viewStateHydrated, setViewStateHydrated] = useState(false);
+  // 扩展版本号：从 manifest 动态读取，避免手写版本导致显示与打包不一致。
+  const extensionVersion = useMemo(() => browser.runtime.getManifest().version, []);
 
   useEffect(() => {
     void load();
@@ -784,32 +788,35 @@ export const PopupApp = () => {
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-emerald-50 to-cyan-50 p-4 text-slate-800">
-      {/* 顶栏区域：标题、状态与刷新入口。 */}
-      <header className="mb-3 rounded-2xl border border-white/60 bg-white/80 p-3 shadow-sm backdrop-blur">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div>
-            <h1 className="text-lg font-semibold tracking-wide">Bookmark Atlas</h1>
-            <p className="text-xs text-slate-500">目录下直接显示书签，支持拖拽到其他目录。</p>
-          </div>
-          {/* 顶栏操作区：设置与刷新。 */}
-          <div className="flex items-center gap-2">
-            <button
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
-              onClick={() => void openOptionsPage()}
-              type="button"
-            >
-              设置
-            </button>
-            <button
-              className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700"
-              onClick={() => void load()}
-              type="button"
-            >
-              刷新
-            </button>
-          </div>
+      {/* 顶部信息与操作区：左侧产品信息，右侧设置与刷新按钮。 */}
+      <div className="mb-2 flex items-start justify-between gap-3 px-1">
+        <div>
+          {/* 应用标题：展示产品名、专用标识与动态版本号。 */}
+          <h1 className="flex items-end gap-2 text-lg font-semibold tracking-wide">
+            <span>Bookmark Atlas</span>
+            <span className="pb-0.5 text-xs font-medium text-slate-500">牛聪专用版</span>
+            <span className="pb-0.5 text-xs font-normal text-slate-400">v{extensionVersion}</span>
+          </h1>
         </div>
-
+        <div className="flex items-center gap-2 pt-0.5">
+          <button
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+            onClick={() => void openOptionsPage()}
+            type="button"
+          >
+            设置
+          </button>
+          <button
+            className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700"
+            onClick={() => void load()}
+            type="button"
+          >
+            刷新
+          </button>
+        </div>
+      </div>
+      {/* 搜索卡片区：仅保留搜索输入。 */}
+      <header className="mb-3 rounded-2xl border border-white/60 bg-white/80 p-3 shadow-sm backdrop-blur">
         {/* 搜索框：全局匹配标题和 URL。 */}
         <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
           <span className="text-slate-400">⌕</span>
@@ -820,6 +827,17 @@ export const PopupApp = () => {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
+          {/* 清空按钮：仅在有搜索词时显示，便于快速恢复全量列表。 */}
+          {query.length > 0 ? (
+            <button
+              aria-label="清空搜索"
+              className="inline-flex h-5 w-5 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              onClick={() => setQuery('')}
+              type="button"
+            >
+              <X aria-hidden className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
         </label>
       </header>
 
@@ -842,7 +860,7 @@ export const PopupApp = () => {
           ) : null}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 overflow-y-auto pr-3 [scrollbar-gutter:stable]">
           {hasSearchQuery ? (
             <>
               {/* 搜索态列表：隐藏目录树，仅显示匹配到的书签。 */}
@@ -861,7 +879,7 @@ export const PopupApp = () => {
                         onDragBookmarkEnd={endDraggingBookmark}
                       />
                       {/* 搜索结果路径：帮助用户判断书签所属位置。 */}
-                      <p className="ml-7 mt-1 line-clamp-1 text-[11px] text-slate-400">
+                      <p className="ml-7 mt-1 break-all whitespace-normal text-[11px] text-slate-400">
                         {item.path.join(' / ') || '根目录'}
                       </p>
                     </li>
@@ -933,9 +951,9 @@ export const PopupApp = () => {
                     type="button"
                   >
                     {/* 根目录图标：与其他目录保持一致的视觉语义。 */}
-                    <div className="inline-flex items-center gap-1.5">
+                    <div className="inline-flex items-start gap-1.5">
                       <FolderIcon />
-                      <span className="truncate">根目录（未归档）</span>
+                      <span className="break-all whitespace-normal leading-5">根目录（未归档）</span>
                     </div>
                   </button>
                 </div>

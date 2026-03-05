@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { X } from 'lucide-react';
 import type { BookmarkIndexItem } from '../shared/types';
 import { BookmarkFavicon } from './bookmark-favicon';
 import {
@@ -307,6 +308,17 @@ export const QuickSearchApp = () => {
 
               }}
             />
+            {/* 清空按钮：仅在有搜索词时展示，减少手动删除输入的操作成本。 */}
+            {query.length > 0 ? (
+              <button
+                aria-label="清空搜索"
+                className="inline-flex h-5 w-5 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                onClick={() => setQuery('')}
+                type="button"
+              >
+                <X aria-hidden className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </label>
           <p className="mt-2 text-xs text-slate-500">方向键选择，Enter 新标签打开，右键可编辑/删除标签</p>
         </header>
