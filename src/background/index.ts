@@ -169,6 +169,12 @@ browser.runtime.onMessage.addListener(async (request: RuntimeRequest): Promise<R
       return { ok: true, movedId: request.bookmarkId };
     }
 
+    if (request.type === 'bookmarks/move-folder') {
+      await bookmarkService.move(request.folderId, { parentId: request.parentId });
+      await rebuildIndexFresh();
+      return { ok: true, movedFolderId: request.folderId };
+    }
+
     if (request.type === 'bookmarks/create-folder') {
       const created = await bookmarkService.create({
         parentId: request.parentId,

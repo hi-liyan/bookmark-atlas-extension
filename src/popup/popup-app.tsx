@@ -11,6 +11,7 @@ import { loadPopupViewState, savePopupViewState } from './view-state-storage';
 import {
   buildFolderTree,
   collectAllFolderIds,
+  collectFolderSubtreeIds,
   flattenFolderTree,
   ROOT_FOLDER_ID,
   type FolderViewNode
@@ -21,6 +22,7 @@ interface BookmarkTreeProps {
   selectedFolderId: string;
   expandedFolderIds: Set<string>;
   draggingBookmarkId: string | null;
+  draggingFolderId: string | null;
   folderBookmarkMap: Map<string, BookmarkIndexItem[]>;
   visibleFolderIds: Set<string> | null;
   dropTargetFolderId: string | null;
@@ -30,9 +32,12 @@ interface BookmarkTreeProps {
   onDragLeaveFolder: () => void;
   onDropToFolder: (folderId: string) => void;
   onOpenFolderMenu: (event: ReactMouseEvent<HTMLElement>, folderId: string, title: string) => void;
+  onOpenBookmark: (item: BookmarkIndexItem) => void;
   onOpenBookmarkMenu: (event: ReactMouseEvent<HTMLElement>, item: BookmarkIndexItem) => void;
   onDragBookmarkStart: (bookmarkId: string) => void;
   onDragBookmarkEnd: () => void;
+  onDragFolderStart: (folderId: string) => void;
+  onDragFolderEnd: () => void;
   registerFolderElement: (folderId: string, element: HTMLButtonElement | null) => void;
 }
 
@@ -97,37 +102,61 @@ const FolderIcon = () => {
 const BookmarkRow = ({
   item,
   isDragging,
+  onOpenBookmark,
   onOpenBookmarkMenu,
   onDragBookmarkStart,
   onDragBookmarkEnd
 }: {
   item: BookmarkIndexItem;
   isDragging: boolean;
+  onOpenBookmark: (targetItem: BookmarkIndexItem) => void;
   onOpenBookmarkMenu: (event: ReactMouseEvent<HTMLElement>, targetItem: BookmarkIndexItem) => void;
   onDragBookmarkStart: (bookmarkId: string) => void;
   onDragBookmarkEnd: () => void;
 }) => {
+  const [dragEnabled, setDragEnabled] = useState(true);
+
   return (
     <article
       className={`rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition ${
-        isDragging ? 'cursor-grabbing opacity-60 ring-2 ring-emerald-300' : 'cursor-grab active:cursor-grabbing'
+        isDragging ? 'cursor-grabbing opacity-60 ring-2 ring-emerald-300' : ''
       }`}
-      draggable
+      draggable={dragEnabled}
+      onMouseDownCapture={(event) => {
+        const target = event.target as HTMLElement | null;
+        const pressedOnText = Boolean(target?.closest('[data-bookmark-text="true"]'));
+        // 在文字区域按下时临时关闭 draggable，确保拖选文字不会被解释为“拖动书签”。
+        setDragEnabled(!pressedOnText);
+      }}
+      onMouseUpCapture={() => {
+        setDragEnabled(true);
+      }}
+      onMouseLeave={() => {
+        setDragEnabled(true);
+      }}
       onDragStart={(event) => {
+        const dragTarget = event.target as HTMLElement | null;
+        // 文字区域允许正常选中文本；从文字区域起手时不触发“移动书签”拖拽。
+        const selectedText = window.getSelection()?.toString().trim() ?? '';
+        if (dragTarget?.closest('[data-bookmark-text="true"]') || selectedText.length > 0) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.setData('text/bookmark-id', item.id);
         event.dataTransfer.effectAllowed = 'move';
         onDragBookmarkStart(item.id);
       }}
       onDragEnd={onDragBookmarkEnd}
+      onDoubleClick={() => onOpenBookmark(item)}
       onContextMenu={(event) => onOpenBookmarkMenu(event, item)}
     >
       {/* 书签主体：左侧 favicon，右侧标题与 URL。 */}
       <div className="flex items-start gap-2">
         {/* 站点图标：优先显示 favicon，失败时回退首字母。 */}
         <BookmarkFavicon url={item.url} title={item.title} sizeClassName="mt-0.5 h-4 w-4" />
-        <div className="min-w-0 flex-1">
-          <p className="line-clamp-1 text-xs font-medium text-slate-800">{item.title || '未命名书签'}</p>
-          <p className="line-clamp-1 text-[11px] text-slate-500">{item.url ?? '-'}</p>
+        <div className="inline-flex min-w-0 max-w-full flex-col" data-bookmark-text="true">
+          <p className="line-clamp-1 cursor-text select-text text-xs font-medium text-slate-800">{item.title || '未命名书签'}</p>
+          <p className="line-clamp-1 cursor-text select-text text-[11px] text-slate-500">{item.url ?? '-'}</p>
         </div>
       </div>
     </article>
@@ -144,6 +173,7 @@ const BookmarkTree = ({
   selectedFolderId,
   expandedFolderIds,
   draggingBookmarkId,
+  draggingFolderId,
   folderBookmarkMap,
   visibleFolderIds,
   dropTargetFolderId,
@@ -153,9 +183,12 @@ const BookmarkTree = ({
   onDragLeaveFolder,
   onDropToFolder,
   onOpenFolderMenu,
+  onOpenBookmark,
   onOpenBookmarkMenu,
   onDragBookmarkStart,
   onDragBookmarkEnd,
+  onDragFolderStart,
+  onDragFolderEnd,
   registerFolderElement
 }: BookmarkTreeProps) => {
   return (
@@ -173,6 +206,7 @@ const BookmarkTree = ({
         const expanded = expandedFolderIds.has(node.id);
         const selected = node.id === selectedFolderId;
         const dropTarget = node.id === dropTargetFolderId;
+        const draggingFolder = node.id === draggingFolderId;
 
         return (
           <li key={node.id}>
@@ -193,10 +227,19 @@ const BookmarkTree = ({
                 ref={(element) => registerFolderElement(node.id, element)}
                 className={`flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition ${
                   selected ? 'bg-emerald-100 text-emerald-900 shadow-sm' : 'text-slate-700 hover:bg-slate-100'
-                } ${dropTarget ? 'ring-2 ring-emerald-300' : ''}`}
+                } ${dropTarget ? 'ring-2 ring-emerald-300' : ''} ${
+                  draggingFolder ? 'cursor-grabbing opacity-60 ring-2 ring-cyan-300' : ''
+                }`}
+                draggable
                 onClick={() => onSelectFolder(node.id)}
                 onDoubleClick={() => onToggleExpand(node.id)}
                 onContextMenu={(event) => onOpenFolderMenu(event, node.id, node.title)}
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('text/folder-id', node.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                  onDragFolderStart(node.id);
+                }}
+                onDragEnd={onDragFolderEnd}
                 onDragOver={(event) => {
                   event.preventDefault();
                   onDragOverFolder(node.id);
@@ -223,6 +266,7 @@ const BookmarkTree = ({
                     key={item.id}
                     item={item}
                     isDragging={draggingBookmarkId === item.id}
+                    onOpenBookmark={onOpenBookmark}
                     onOpenBookmarkMenu={onOpenBookmarkMenu}
                     onDragBookmarkStart={onDragBookmarkStart}
                     onDragBookmarkEnd={onDragBookmarkEnd}
@@ -235,6 +279,7 @@ const BookmarkTree = ({
                     selectedFolderId={selectedFolderId}
                     expandedFolderIds={expandedFolderIds}
                     draggingBookmarkId={draggingBookmarkId}
+                    draggingFolderId={draggingFolderId}
                     folderBookmarkMap={folderBookmarkMap}
                     visibleFolderIds={visibleFolderIds}
                     dropTargetFolderId={dropTargetFolderId}
@@ -244,9 +289,12 @@ const BookmarkTree = ({
                     onDragLeaveFolder={onDragLeaveFolder}
                     onDropToFolder={onDropToFolder}
                     onOpenFolderMenu={onOpenFolderMenu}
+                    onOpenBookmark={onOpenBookmark}
                     onOpenBookmarkMenu={onOpenBookmarkMenu}
                     onDragBookmarkStart={onDragBookmarkStart}
                     onDragBookmarkEnd={onDragBookmarkEnd}
+                    onDragFolderStart={onDragFolderStart}
+                    onDragFolderEnd={onDragFolderEnd}
                     registerFolderElement={registerFolderElement}
                   />
                 ) : null}
@@ -306,6 +354,7 @@ export const PopupApp = () => {
     setSelectedFolderId,
     load,
     moveBookmark,
+    moveFolder,
     createFolder,
     createBookmark,
     deleteFolder,
@@ -315,6 +364,7 @@ export const PopupApp = () => {
   } = usePopupStore();
 
   const [draggingBookmarkId, setDraggingBookmarkId] = useState<string | null>(null);
+  const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set<string>());
   const [contextMenu, setContextMenu] = useState<PopupContextMenuState | null>(null);
@@ -518,6 +568,16 @@ export const PopupApp = () => {
     setContextMenu({ kind: 'bookmark', x: position.x, y: position.y, item });
   };
 
+  /**
+   * 双击书签时在新标签页打开，保持与右键“在新标签页中打开”一致。
+   */
+  const openBookmarkInNewTab = (item: BookmarkIndexItem): void => {
+    if (!item.url) {
+      return;
+    }
+    void browser.tabs.create({ url: item.url });
+  };
+
   const openFolderMenu = (
     event: ReactMouseEvent<HTMLElement>,
     folderId: string,
@@ -531,18 +591,69 @@ export const PopupApp = () => {
     setContextMenu({ kind: 'folder', x: position.x, y: position.y, folderId, title, canDelete: !isRoot, createParentId });
   };
 
-  const dropBookmarkToFolder = (folderId: string): void => {
-    if (!draggingBookmarkId) {
-      return;
-    }
-
+  /**
+   * 统一处理拖拽释放到目录的行为：支持书签与目录两类拖拽源。
+   */
+  const dropToFolder = (folderId: string): void => {
     const targetParentId = folderId === ROOT_FOLDER_ID ? browserRootFolderId : folderId;
     if (!targetParentId) {
       return;
     }
 
-    void moveBookmark(draggingBookmarkId, targetParentId);
+    if (draggingBookmarkId) {
+      void moveBookmark(draggingBookmarkId, targetParentId);
+      setDraggingBookmarkId(null);
+      setDropTargetFolderId(null);
+      return;
+    }
+
+    if (!draggingFolderId) {
+      return;
+    }
+
+    const currentFolderSubtreeIds = collectFolderSubtreeIds(folderTree, draggingFolderId);
+    // 禁止把目录拖到自己或自己的子目录下，避免形成循环层级。
+    if (draggingFolderId === targetParentId || currentFolderSubtreeIds.has(targetParentId)) {
+      setDraggingFolderId(null);
+      setDropTargetFolderId(null);
+      return;
+    }
+
+    void moveFolder(draggingFolderId, targetParentId);
+    setDraggingFolderId(null);
     setDraggingBookmarkId(null);
+    setDropTargetFolderId(null);
+  };
+
+  /**
+   * 开始拖拽书签时，清理目录拖拽状态，避免两类拖拽源并发冲突。
+   */
+  const startDraggingBookmark = (bookmarkId: string): void => {
+    setDraggingFolderId(null);
+    setDraggingBookmarkId(bookmarkId);
+  };
+
+  /**
+   * 结束拖拽书签时，统一清理拖拽态与高亮目标目录。
+   */
+  const endDraggingBookmark = (): void => {
+    setDraggingBookmarkId(null);
+    setDropTargetFolderId(null);
+  };
+
+  /**
+   * 开始拖拽目录时，清理书签拖拽状态，保证拖拽源唯一。
+   */
+  const startDraggingFolder = (folderId: string): void => {
+    setDraggingBookmarkId(null);
+    setDraggingFolderId(folderId);
+  };
+
+  /**
+   * 结束拖拽目录时，统一清理拖拽态与高亮目标目录。
+   */
+  const endDraggingFolder = (): void => {
+    setDraggingFolderId(null);
     setDropTargetFolderId(null);
   };
 
@@ -738,12 +849,10 @@ export const PopupApp = () => {
                       <BookmarkRow
                         item={item}
                         isDragging={draggingBookmarkId === item.id}
+                        onOpenBookmark={openBookmarkInNewTab}
                         onOpenBookmarkMenu={openBookmarkMenu}
-                        onDragBookmarkStart={setDraggingBookmarkId}
-                        onDragBookmarkEnd={() => {
-                          setDraggingBookmarkId(null);
-                          setDropTargetFolderId(null);
-                        }}
+                        onDragBookmarkStart={startDraggingBookmark}
+                        onDragBookmarkEnd={endDraggingBookmark}
                       />
                       {/* 搜索结果路径：帮助用户判断书签所属位置。 */}
                       <p className="ml-7 mt-1 line-clamp-1 text-[11px] text-slate-400">
@@ -813,7 +922,7 @@ export const PopupApp = () => {
                     onDragLeave={() => setDropTargetFolderId(null)}
                     onDrop={(event) => {
                       event.preventDefault();
-                      dropBookmarkToFolder(ROOT_FOLDER_ID);
+                      dropToFolder(ROOT_FOLDER_ID);
                     }}
                     type="button"
                   >
@@ -832,12 +941,10 @@ export const PopupApp = () => {
                         key={item.id}
                         item={item}
                         isDragging={draggingBookmarkId === item.id}
+                        onOpenBookmark={openBookmarkInNewTab}
                         onOpenBookmarkMenu={openBookmarkMenu}
-                        onDragBookmarkStart={setDraggingBookmarkId}
-                        onDragBookmarkEnd={() => {
-                          setDraggingBookmarkId(null);
-                          setDropTargetFolderId(null);
-                        }}
+                        onDragBookmarkStart={startDraggingBookmark}
+                        onDragBookmarkEnd={endDraggingBookmark}
                       />
                     ))}
 
@@ -846,6 +953,7 @@ export const PopupApp = () => {
                       selectedFolderId={selectedFolderId}
                       expandedFolderIds={expandedFolderIds}
                       draggingBookmarkId={draggingBookmarkId}
+                      draggingFolderId={draggingFolderId}
                       folderBookmarkMap={folderBookmarkMap}
                       visibleFolderIds={visibleFolderIds}
                       dropTargetFolderId={dropTargetFolderId}
@@ -863,14 +971,14 @@ export const PopupApp = () => {
                       }}
                       onDragOverFolder={setDropTargetFolderId}
                       onDragLeaveFolder={() => setDropTargetFolderId(null)}
-                      onDropToFolder={dropBookmarkToFolder}
+                      onDropToFolder={dropToFolder}
                       onOpenFolderMenu={openFolderMenu}
+                      onOpenBookmark={openBookmarkInNewTab}
                       onOpenBookmarkMenu={openBookmarkMenu}
-                      onDragBookmarkStart={setDraggingBookmarkId}
-                      onDragBookmarkEnd={() => {
-                        setDraggingBookmarkId(null);
-                        setDropTargetFolderId(null);
-                      }}
+                      onDragBookmarkStart={startDraggingBookmark}
+                      onDragBookmarkEnd={endDraggingBookmark}
+                      onDragFolderStart={startDraggingFolder}
+                      onDragFolderEnd={endDraggingFolder}
                       registerFolderElement={(folderId, element) => {
                         if (element) {
                           folderElementMapRef.current.set(folderId, element);

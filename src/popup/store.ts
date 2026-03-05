@@ -28,6 +28,7 @@ interface PopupState {
   setQuery: (value: string) => void;
   setSelectedFolderId: (folderId: string) => void;
   moveBookmark: (bookmarkId: string, parentId: string) => Promise<boolean>;
+  moveFolder: (folderId: string, parentId: string) => Promise<boolean>;
   createFolder: (parentId: string, title: string) => Promise<string | null>;
   createBookmark: (parentId: string, title: string, url: string) => Promise<boolean>;
   deleteFolder: (folderId: string) => Promise<boolean>;
@@ -55,6 +56,31 @@ const createTempId = (prefix: string): string => {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
+/**
+ * 同步拉取目录树与索引列表，确保跨模块操作后前端状态一致。
+ * 入参：无。
+ * 出参：最新目录树与索引项数组。
+ */
+const fetchTreeAndItems = async (): Promise<{ tree: BookmarkNode[]; items: BookmarkIndexItem[] }> => {
+  const [treeResponse, indexResponse] = await Promise.all([
+    request({ type: 'bookmarks/get-tree' }),
+    request({ type: 'bookmarks/get-index' })
+  ]);
+
+  if (!treeResponse.ok || !('tree' in treeResponse)) {
+    throw new Error(treeResponse.ok ? 'Invalid tree response.' : treeResponse.error);
+  }
+
+  if (!indexResponse.ok || !('index' in indexResponse)) {
+    throw new Error(indexResponse.ok ? 'Invalid index response.' : indexResponse.error);
+  }
+
+  return {
+    tree: treeResponse.tree,
+    items: indexResponse.index.items
+  };
+};
+
 export const usePopupStore = create<PopupState>((set, get) => ({
   tree: [],
   items: [],
@@ -68,20 +94,8 @@ export const usePopupStore = create<PopupState>((set, get) => ({
     set({ loading: true, error: '' });
 
     try {
-      const [treeResponse, indexResponse] = await Promise.all([
-        request({ type: 'bookmarks/get-tree' }),
-        request({ type: 'bookmarks/get-index' })
-      ]);
-
-      if (!treeResponse.ok || !('tree' in treeResponse)) {
-        throw new Error(treeResponse.ok ? 'Invalid tree response.' : treeResponse.error);
-      }
-
-      if (!indexResponse.ok || !('index' in indexResponse)) {
-        throw new Error(indexResponse.ok ? 'Invalid index response.' : indexResponse.error);
-      }
-
-      set({ tree: treeResponse.tree, items: indexResponse.index.items, loading: false });
+      const payload = await fetchTreeAndItems();
+      set({ tree: payload.tree, items: payload.items, loading: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load bookmarks.';
       set({ error: message, loading: false });
@@ -122,6 +136,40 @@ export const usePopupStore = create<PopupState>((set, get) => ({
       const message = error instanceof Error ? error.message : 'Failed to move bookmark.';
       // 后端失败时回滚乐观更新，避免列表路径与真实数据不一致。
       set({ items: previousItems, error: message });
+      return false;
+    } finally {
+      set({ moving: false });
+    }
+  },
+
+  /**
+   * 移动目录到目标目录下；操作成功后回读完整 tree/index，避免层级与路径残留旧值。
+   */
+  moveFolder: async (folderId: string, parentId: string) => {
+    if (folderId === ROOT_FOLDER_ID) {
+      set({ error: '根目录不支持移动。' });
+      return false;
+    }
+
+    set({ moving: true, error: '' });
+
+    try {
+      const response = await request({
+        type: 'bookmarks/move-folder',
+        folderId,
+        parentId
+      });
+
+      if (!response.ok) {
+        throw new Error(response.error);
+      }
+
+      const payload = await fetchTreeAndItems();
+      set({ tree: payload.tree, items: payload.items });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to move folder.';
+      set({ error: message });
       return false;
     } finally {
       set({ moving: false });

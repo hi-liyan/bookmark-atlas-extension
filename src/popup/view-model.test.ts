@@ -145,4 +145,18 @@ describe('folder utility functions', () => {
     const folderTree = buildFolderTree([createFolder('0', '', [createFolder('10', 'A')])]);
     expect(Array.from(collectFolderSubtreeIds(folderTree, '404'))).toEqual([]);
   });
+
+  it('should collect target folder and all descendants for subtree ids', () => {
+    const folderTree = buildFolderTree([
+      createFolder('0', '', [
+        createFolder('10', 'A', [
+          createFolder('11', 'A-1'),
+          createFolder('12', 'A-2', [createFolder('13', 'A-2-1')])
+        ])
+      ])
+    ]);
+
+    const subtreeIds = collectFolderSubtreeIds(folderTree, '10');
+    expect(Array.from(subtreeIds).sort()).toEqual(['10', '11', '12', '13']);
+  });
 });
