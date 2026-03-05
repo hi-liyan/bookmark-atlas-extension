@@ -474,7 +474,7 @@ export const PopupApp = () => {
   };
 
   /**
-   * 提交编辑书签表单并刷新列表。
+   * 提交编辑书签表单：采用乐观更新，失败时保持弹窗以便用户修正。
    */
   const submitEditBookmark = async (): Promise<void> => {
     if (!editingDraft) {
@@ -489,7 +489,11 @@ export const PopupApp = () => {
     }
 
     setEditFormError('');
-    await updateBookmark(editingDraft.id, title, url);
+    const updated = await updateBookmark(editingDraft.id, title, url);
+    if (!updated) {
+      return;
+    }
+
     setEditingDraft(null);
     setContextMenu(null);
   };

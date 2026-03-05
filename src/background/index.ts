@@ -1,6 +1,7 @@
 import { browser } from '../shared/browser';
 import { buildBookmarkIndex } from '../shared/bookmark-index';
 import { bookmarkService } from '../shared/bookmark-service';
+import { createSingleFlightController } from './single-flight';
 import type { BookmarkIndexSnapshot, RuntimeRequest, RuntimeResponse } from '../shared/types';
 
 const INDEX_STORAGE_KEY = 'bookmark-index-snapshot';
@@ -10,7 +11,6 @@ const QUICK_SEARCH_WINDOW_WIDTH = 760;
 const QUICK_SEARCH_WINDOW_HEIGHT = 520;
 
 let cachedIndex: BookmarkIndexSnapshot | null = null;
-let isRebuilding = false;
 let quickSearchWindowId: number | null = null;
 
 /**
@@ -18,22 +18,27 @@ let quickSearchWindowId: number | null = null;
  * 入参：无。
  * 出参：最新书签索引快照。
  */
-const rebuildIndex = async (): Promise<BookmarkIndexSnapshot> => {
-  if (isRebuilding && cachedIndex) {
-    return cachedIndex;
-  }
+const rebuildIndexController = createSingleFlightController(async (): Promise<BookmarkIndexSnapshot> => {
+  const tree = await bookmarkService.getTree();
+  const snapshot = buildBookmarkIndex(tree);
+  cachedIndex = snapshot;
+  await browser.storage.local.set({ [INDEX_STORAGE_KEY]: snapshot });
+  return snapshot;
+});
 
-  isRebuilding = true;
-  try {
-    const tree = await bookmarkService.getTree();
-    const snapshot = buildBookmarkIndex(tree);
-    cachedIndex = snapshot;
-    await browser.storage.local.set({ [INDEX_STORAGE_KEY]: snapshot });
-    return snapshot;
-  } finally {
-    isRebuilding = false;
-  }
-};
+/**
+ * 执行索引重建：并发请求会复用同一轮重建结果。
+ * 入参：无。
+ * 出参：最新书签索引快照。
+ */
+const rebuildIndex = (): Promise<BookmarkIndexSnapshot> => rebuildIndexController.run();
+
+/**
+ * 执行“新鲜重建”：若已有进行中的重建，先等待其完成，再补一轮重建。
+ * 入参：无。
+ * 出参：最新书签索引快照。
+ */
+const rebuildIndexFresh = (): Promise<BookmarkIndexSnapshot> => rebuildIndexController.runFresh();
 
 /**
  * 获取当前可用索引：优先内存缓存，其次本地存储，最后触发重建。
@@ -155,12 +160,13 @@ browser.runtime.onMessage.addListener(
       }
 
       if (request.type === 'bookmarks/rebuild-index') {
-        const index = await rebuildIndex();
+        const index = await rebuildIndexFresh();
         return { ok: true, rebuiltAt: index.updatedAt };
       }
 
       if (request.type === 'bookmarks/move') {
         await bookmarkService.move(request.bookmarkId, { parentId: request.parentId });
+        await rebuildIndexFresh();
         return { ok: true, movedId: request.bookmarkId };
       }
 
@@ -169,11 +175,13 @@ browser.runtime.onMessage.addListener(
           title: request.title,
           url: request.url
         });
+        await rebuildIndexFresh();
         return { ok: true, updatedId: request.bookmarkId };
       }
 
       if (request.type === 'bookmarks/delete') {
         await bookmarkService.remove(request.bookmarkId);
+        await rebuildIndexFresh();
         return { ok: true, deletedId: request.bookmarkId };
       }
 

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { browser } from '../shared/browser';
 import type { BookmarkIndexItem, BookmarkNode, RuntimeResponse } from '../shared/types';
+import { applyBookmarkEditOptimistically } from './index-items';
 import { ROOT_FOLDER_ID } from './view-model';
 
 interface PopupState {
@@ -15,7 +16,7 @@ interface PopupState {
   setQuery: (value: string) => void;
   setSelectedFolderId: (folderId: string) => void;
   moveBookmark: (bookmarkId: string, parentId: string) => Promise<void>;
-  updateBookmark: (bookmarkId: string, title: string, url: string) => Promise<void>;
+  updateBookmark: (bookmarkId: string, title: string, url: string) => Promise<boolean>;
   deleteBookmark: (bookmarkId: string) => Promise<void>;
 }
 
@@ -97,6 +98,15 @@ export const usePopupStore = create<PopupState>((set, get) => ({
   updateBookmark: async (bookmarkId: string, title: string, url: string) => {
     set({ moving: true, error: '' });
 
+    const previousItems = get().items;
+    set({
+      items: applyBookmarkEditOptimistically(previousItems, {
+        bookmarkId,
+        title,
+        url
+      })
+    });
+
     try {
       const response = await request<RuntimeResponse>({
         type: 'bookmarks/update',
@@ -108,17 +118,12 @@ export const usePopupStore = create<PopupState>((set, get) => ({
         throw new Error(response.error);
       }
 
-      // 编辑成功后主动重建一次索引，避免依赖事件异步重建导致 popup 读取到旧缓存。
-      const rebuildResponse = await request<RuntimeResponse>({ type: 'bookmarks/rebuild-index' });
-      if (!rebuildResponse.ok) {
-        throw new Error(rebuildResponse.error);
-      }
-
-      // 索引重建成功后再加载页面数据，确保列表来自浏览器最新书签状态。
-      await get().load();
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update bookmark.';
-      set({ error: message });
+      // 后端失败时回滚本地乐观更新，避免界面与真实数据长期不一致。
+      set({ items: previousItems, error: message });
+      return false;
     } finally {
       set({ moving: false });
     }

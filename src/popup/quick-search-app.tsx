@@ -10,6 +10,7 @@ import {
   updateTagFromQuickSearch,
   validateEditTagDraft
 } from './quick-search-actions';
+import { applyBookmarkEditOptimistically } from './index-items';
 import { resolveQuickSearchEscapeAction } from './quick-search-keyboard';
 import { buildQuickSearchResults, clampHighlightIndex } from './quick-search-service';
 
@@ -151,7 +152,7 @@ export const QuickSearchApp = () => {
   }, [contextMenu, deletingItem, editingDraft]);
 
   /**
-   * 重新拉取快捷搜索索引数据，供编辑/删除后刷新列表。
+   * 重新拉取快捷搜索索引数据，供删除后刷新列表。
    * 入参：无。
    * 出参：Promise<void>。
    */
@@ -189,7 +190,7 @@ export const QuickSearchApp = () => {
   };
 
   /**
-   * 提交标签编辑：先校验表单，再更新书签并重载索引。
+   * 提交标签编辑：先乐观更新列表，再提交后端并在失败时回滚。
    * 入参：无。
    * 出参：Promise<void>。
    */
@@ -207,19 +208,29 @@ export const QuickSearchApp = () => {
     setSubmittingAction(true);
     setActionError('');
     setEditFormError('');
+
+    // 先在本地更新列表，避免依赖索引回读导致用户看不到最新编辑结果。
+    const previousItems = allItems;
+    const normalizedDraft: EditTagDraft = {
+      ...editingDraft,
+      title: validation.title,
+      url: validation.url
+    };
+    setAllItems((items) =>
+      applyBookmarkEditOptimistically(items, {
+        bookmarkId: normalizedDraft.id,
+        title: normalizedDraft.title,
+        url: normalizedDraft.url
+      })
+    );
+
     try {
-      // 提交前先清洗空白字符，避免标题与 URL 因首尾空格导致脏数据。
-      const normalizedDraft: EditTagDraft = {
-        ...editingDraft,
-        title: validation.title,
-        url: validation.url
-      };
       await updateTagFromQuickSearch(normalizedDraft);
-      await reloadItems();
       setEditingDraft(null);
       setContextMenu(null);
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : '编辑标签失败';
+      setAllItems(previousItems);
       setActionError(message);
     } finally {
       setSubmittingAction(false);
