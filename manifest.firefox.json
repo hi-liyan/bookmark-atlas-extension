@@ -26,8 +26,8 @@
   "commands": {
     "open-quick-search": {
       "suggested_key": {
-        "default": "Ctrl+Shift+V",
-        "mac": "Command+Shift+V"
+        "default": "Ctrl+Shift+F",
+        "mac": "Command+Shift+F"
       },
       "description": "Open quick bookmark search"
     }

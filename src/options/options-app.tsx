@@ -168,20 +168,24 @@ export const OptionsApp = () => {
   };
 
   return (
-    <main className="min-h-screen bg-base-200 px-4 py-6 text-base-content md:px-6">
+    <main className="min-h-screen bg-[#EFF3F7] px-4 py-6 text-slate-800 md:px-6">
       {/* 页面主体容器：统一控制最大宽度，避免信息过宽导致阅读困难 */}
       <section className="mx-auto flex w-full max-w-5xl flex-col gap-4">
         {/* 顶部标题栏：展示设置页定位和主操作按钮 */}
-        <header className="rounded-box border border-base-300 bg-base-100 p-4 md:p-5">
+        <header className="rounded-[15px] border border-slate-200 bg-white p-4 md:p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-2xl font-semibold">扩展设置</h1>
-              <p className="text-sm text-base-content/70">使用标签页切换同步配置和快捷键配置，减少单页拥挤。</p>
+              <p className="text-sm text-slate-500">BooKmark Atlas 扩展设置页。</p>
             </div>
             {activeTab === 'sync' ? (
               <div className="flex items-center gap-3">
-                {savedMessage ? <span className="text-sm text-success">{savedMessage}</span> : null}
-                <button className="btn btn-primary" onClick={() => void save()} type="button">
+                {savedMessage ? <span className="text-sm text-[#138052]">{savedMessage}</span> : null}
+                <button
+                  className="rounded-lg bg-[#138052] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#106b45]"
+                  onClick={() => void save()}
+                  type="button"
+                >
                   保存设置
                 </button>
               </div>
@@ -189,18 +193,26 @@ export const OptionsApp = () => {
           </div>
         </header>
 
-        <div className="rounded-box border border-base-300 bg-base-100 p-4 md:p-5">
+        <div className="rounded-[15px] border border-slate-200 bg-white p-4 md:p-5">
           {/* Tab 导航区：切换同步与快捷键两个设置分组 */}
-          <div className="tabs tabs-box mb-4 w-fit bg-base-200">
+          <div className="mb-4 inline-flex w-fit rounded-[10px] bg-[#EFF3F7] p-1">
             <button
-              className={`tab ${activeTab === 'sync' ? 'tab-active' : ''}`}
+              className={`rounded-[8px] px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'sync'
+                  ? 'bg-white text-[#138052] shadow-sm ring-1 ring-[#138052]/20'
+                  : 'text-slate-600 hover:bg-white/80 hover:text-[#138052]'
+              }`}
               onClick={() => setActiveTab('sync')}
               type="button"
             >
               同步
             </button>
             <button
-              className={`tab ${activeTab === 'shortcuts' ? 'tab-active' : ''}`}
+              className={`rounded-[8px] px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'shortcuts'
+                  ? 'bg-white text-[#138052] shadow-sm ring-1 ring-[#138052]/20'
+                  : 'text-slate-600 hover:bg-white/80 hover:text-[#138052]'
+              }`}
               onClick={() => setActiveTab('shortcuts')}
               type="button"
             >
@@ -214,7 +226,7 @@ export const OptionsApp = () => {
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">同步配置</h2>
-                  <p className="text-sm text-base-content/70">配置 CouchDB 地址、模式和冲突策略。保存后生效。</p>
+                  <p className="text-sm text-slate-500">配置 CouchDB 地址、模式和冲突策略。保存后生效。</p>
                 </div>
                 <label className="label cursor-pointer gap-2">
                   <span className="label-text">启用同步</span>
@@ -341,13 +353,21 @@ export const OptionsApp = () => {
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
                   <h2 className="text-lg font-semibold">快捷键设置</h2>
-                  <p className="text-sm text-base-content/70">展示当前快捷键，修改请使用浏览器原生快捷键设置页面。</p>
+                  <p className="text-sm text-slate-500">展示当前快捷键，修改请使用浏览器原生快捷键设置页面。</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button className="btn btn-sm btn-outline" onClick={() => void loadShortcutCommands()} type="button">
+                  <button
+                    className="rounded-lg border border-[#138052]/40 px-3 py-1.5 text-sm font-medium text-[#138052] transition hover:bg-[#138052]/10"
+                    onClick={() => void loadShortcutCommands()}
+                    type="button"
+                  >
                     刷新列表
                   </button>
-                  <button className="btn btn-sm btn-primary" onClick={() => void goToShortcutSettings()} type="button">
+                  <button
+                    className="rounded-lg bg-[#138052] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#106b45]"
+                    onClick={() => void goToShortcutSettings()}
+                    type="button"
+                  >
                     去浏览器设置
                   </button>
                 </div>
