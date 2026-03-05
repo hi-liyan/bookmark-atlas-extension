@@ -20,6 +20,7 @@ interface BookmarkTreeProps {
   nodes: FolderViewNode[];
   selectedFolderId: string;
   expandedFolderIds: Set<string>;
+  draggingBookmarkId: string | null;
   folderBookmarkMap: Map<string, BookmarkIndexItem[]>;
   visibleFolderIds: Set<string> | null;
   dropTargetFolderId: string | null;
@@ -95,18 +96,22 @@ const FolderIcon = () => {
  */
 const BookmarkRow = ({
   item,
+  isDragging,
   onOpenBookmarkMenu,
   onDragBookmarkStart,
   onDragBookmarkEnd
 }: {
   item: BookmarkIndexItem;
+  isDragging: boolean;
   onOpenBookmarkMenu: (event: ReactMouseEvent<HTMLElement>, targetItem: BookmarkIndexItem) => void;
   onDragBookmarkStart: (bookmarkId: string) => void;
   onDragBookmarkEnd: () => void;
 }) => {
   return (
     <article
-      className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm"
+      className={`rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition ${
+        isDragging ? 'cursor-grabbing opacity-60 ring-2 ring-emerald-300' : 'cursor-grab active:cursor-grabbing'
+      }`}
       draggable
       onDragStart={(event) => {
         event.dataTransfer.setData('text/bookmark-id', item.id);
@@ -138,6 +143,7 @@ const BookmarkTree = ({
   nodes,
   selectedFolderId,
   expandedFolderIds,
+  draggingBookmarkId,
   folderBookmarkMap,
   visibleFolderIds,
   dropTargetFolderId,
@@ -189,6 +195,7 @@ const BookmarkTree = ({
                   selected ? 'bg-emerald-100 text-emerald-900 shadow-sm' : 'text-slate-700 hover:bg-slate-100'
                 } ${dropTarget ? 'ring-2 ring-emerald-300' : ''}`}
                 onClick={() => onSelectFolder(node.id)}
+                onDoubleClick={() => onToggleExpand(node.id)}
                 onContextMenu={(event) => onOpenFolderMenu(event, node.id, node.title)}
                 onDragOver={(event) => {
                   event.preventDefault();
@@ -215,6 +222,7 @@ const BookmarkTree = ({
                   <BookmarkRow
                     key={item.id}
                     item={item}
+                    isDragging={draggingBookmarkId === item.id}
                     onOpenBookmarkMenu={onOpenBookmarkMenu}
                     onDragBookmarkStart={onDragBookmarkStart}
                     onDragBookmarkEnd={onDragBookmarkEnd}
@@ -226,6 +234,7 @@ const BookmarkTree = ({
                     nodes={visibleChildren}
                     selectedFolderId={selectedFolderId}
                     expandedFolderIds={expandedFolderIds}
+                    draggingBookmarkId={draggingBookmarkId}
                     folderBookmarkMap={folderBookmarkMap}
                     visibleFolderIds={visibleFolderIds}
                     dropTargetFolderId={dropTargetFolderId}
@@ -362,6 +371,7 @@ export const PopupApp = () => {
   const allExpanded = allFolderIds.length > 0 && allFolderIds.every((folderId) => expandedFolderIds.has(folderId));
 
   const queryNorm = useMemo(() => normalizeText(query), [query]);
+  const hasSearchQuery = queryNorm.length > 0;
   const matchedItems = useMemo(() => {
     if (!queryNorm) {
       return items;
@@ -703,24 +713,88 @@ export const PopupApp = () => {
       {/* 单窗口树区域：目录后直接展示其书签。 */}
       <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-white/60 bg-white/90 p-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-700">目录树</h2>
-          <button
-            className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-200"
-            onClick={() => setExpandedFolderIds(allExpanded ? new Set<string>() : new Set<string>(allFolderIds))}
-            type="button"
-          >
-            {allExpanded ? '全部收起' : '全部展开'}
-          </button>
+          <h2 className="text-sm font-semibold text-slate-700">{hasSearchQuery ? '搜索结果' : '目录树'}</h2>
+          {!hasSearchQuery ? (
+            <button
+              className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-200"
+              onClick={() => setExpandedFolderIds(allExpanded ? new Set<string>() : new Set<string>(allFolderIds))}
+              type="button"
+            >
+              {allExpanded ? '全部收起' : '全部展开'}
+            </button>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <ul className="space-y-1.5">
-            <li>
-              <div className="flex items-center gap-1">
-                {rootBookmarks.length > 0 || folderTree.length > 0 ? (
+          {hasSearchQuery ? (
+            <>
+              {/* 搜索态列表：隐藏目录树，仅显示匹配到的书签。 */}
+              {matchedItems.length === 0 ? (
+                <div className="px-2 py-4 text-sm text-slate-500">没有匹配的书签</div>
+              ) : (
+                <ul className="space-y-1.5">
+                  {matchedItems.map((item) => (
+                    <li key={item.id}>
+                      <BookmarkRow
+                        item={item}
+                        isDragging={draggingBookmarkId === item.id}
+                        onOpenBookmarkMenu={openBookmarkMenu}
+                        onDragBookmarkStart={setDraggingBookmarkId}
+                        onDragBookmarkEnd={() => {
+                          setDraggingBookmarkId(null);
+                          setDropTargetFolderId(null);
+                        }}
+                      />
+                      {/* 搜索结果路径：帮助用户判断书签所属位置。 */}
+                      <p className="ml-7 mt-1 line-clamp-1 text-[11px] text-slate-400">
+                        {item.path.join(' / ') || '根目录'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : (
+            <ul className="space-y-1.5">
+              <li>
+                <div className="flex items-center gap-1">
+                  {rootBookmarks.length > 0 || folderTree.length > 0 ? (
+                    <button
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 transition hover:bg-slate-100"
+                      onClick={() => {
+                        setExpandedFolderIds((previous) => {
+                          const next = new Set<string>(previous);
+                          if (next.has(ROOT_FOLDER_ID)) {
+                            next.delete(ROOT_FOLDER_ID);
+                          } else {
+                            next.add(ROOT_FOLDER_ID);
+                          }
+                          return next;
+                        });
+                      }}
+                      type="button"
+                    >
+                      {expandedFolderIds.has(ROOT_FOLDER_ID) ? '▼' : '▶'}
+                    </button>
+                  ) : (
+                    <span aria-hidden className="inline-block h-6 w-6" />
+                  )}
+
                   <button
-                    className="inline-flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 transition hover:bg-slate-100"
-                    onClick={() => {
+                    ref={(element) => {
+                      if (element) {
+                        folderElementMapRef.current.set(ROOT_FOLDER_ID, element);
+                      } else {
+                        folderElementMapRef.current.delete(ROOT_FOLDER_ID);
+                      }
+                    }}
+                    className={`flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                      selectedFolderId === ROOT_FOLDER_ID
+                        ? 'bg-emerald-100 text-emerald-900 shadow-sm'
+                        : 'text-slate-700 hover:bg-slate-100'
+                    } ${dropTargetFolderId === ROOT_FOLDER_ID ? 'ring-2 ring-emerald-300' : ''}`}
+                    onClick={() => setSelectedFolderId(ROOT_FOLDER_ID)}
+                    onDoubleClick={() => {
                       setExpandedFolderIds((previous) => {
                         const next = new Set<string>(previous);
                         if (next.has(ROOT_FOLDER_ID)) {
@@ -731,104 +805,85 @@ export const PopupApp = () => {
                         return next;
                       });
                     }}
+                    onContextMenu={(event) => openFolderMenu(event, ROOT_FOLDER_ID, '根目录（未归档）')}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setDropTargetFolderId(ROOT_FOLDER_ID);
+                    }}
+                    onDragLeave={() => setDropTargetFolderId(null)}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      dropBookmarkToFolder(ROOT_FOLDER_ID);
+                    }}
                     type="button"
                   >
-                    {expandedFolderIds.has(ROOT_FOLDER_ID) ? '▼' : '▶'}
+                    {/* 根目录图标：与其他目录保持一致的视觉语义。 */}
+                    <div className="inline-flex items-center gap-1.5">
+                      <FolderIcon />
+                      <span className="truncate">根目录（未归档）</span>
+                    </div>
                   </button>
-                ) : (
-                  <span aria-hidden className="inline-block h-6 w-6" />
-                )}
+                </div>
 
-                <button
-                  ref={(element) => {
-                    if (element) {
-                      folderElementMapRef.current.set(ROOT_FOLDER_ID, element);
-                    } else {
-                      folderElementMapRef.current.delete(ROOT_FOLDER_ID);
-                    }
-                  }}
-                  className={`flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                    selectedFolderId === ROOT_FOLDER_ID
-                      ? 'bg-emerald-100 text-emerald-900 shadow-sm'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  } ${dropTargetFolderId === ROOT_FOLDER_ID ? 'ring-2 ring-emerald-300' : ''}`}
-                  onClick={() => setSelectedFolderId(ROOT_FOLDER_ID)}
-                  onContextMenu={(event) => openFolderMenu(event, ROOT_FOLDER_ID, '根目录（未归档）')}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setDropTargetFolderId(ROOT_FOLDER_ID);
-                  }}
-                  onDragLeave={() => setDropTargetFolderId(null)}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    dropBookmarkToFolder(ROOT_FOLDER_ID);
-                  }}
-                  type="button"
-                >
-                  {/* 根目录图标：与其他目录保持一致的视觉语义。 */}
-                  <div className="inline-flex items-center gap-1.5">
-                    <FolderIcon />
-                    <span className="truncate">根目录（未归档）</span>
-                  </div>
-                </button>
-              </div>
+                {expandedFolderIds.has(ROOT_FOLDER_ID) ? (
+                  <div className="ml-6 mt-1 space-y-1">
+                    {rootBookmarks.map((item) => (
+                      <BookmarkRow
+                        key={item.id}
+                        item={item}
+                        isDragging={draggingBookmarkId === item.id}
+                        onOpenBookmarkMenu={openBookmarkMenu}
+                        onDragBookmarkStart={setDraggingBookmarkId}
+                        onDragBookmarkEnd={() => {
+                          setDraggingBookmarkId(null);
+                          setDropTargetFolderId(null);
+                        }}
+                      />
+                    ))}
 
-              {expandedFolderIds.has(ROOT_FOLDER_ID) ? (
-                <div className="ml-6 mt-1 space-y-1">
-                  {rootBookmarks.map((item) => (
-                    <BookmarkRow
-                      key={item.id}
-                      item={item}
+                    <BookmarkTree
+                      nodes={folderTree}
+                      selectedFolderId={selectedFolderId}
+                      expandedFolderIds={expandedFolderIds}
+                      draggingBookmarkId={draggingBookmarkId}
+                      folderBookmarkMap={folderBookmarkMap}
+                      visibleFolderIds={visibleFolderIds}
+                      dropTargetFolderId={dropTargetFolderId}
+                      onSelectFolder={setSelectedFolderId}
+                      onToggleExpand={(folderId) => {
+                        setExpandedFolderIds((previous) => {
+                          const next = new Set<string>(previous);
+                          if (next.has(folderId)) {
+                            next.delete(folderId);
+                          } else {
+                            next.add(folderId);
+                          }
+                          return next;
+                        });
+                      }}
+                      onDragOverFolder={setDropTargetFolderId}
+                      onDragLeaveFolder={() => setDropTargetFolderId(null)}
+                      onDropToFolder={dropBookmarkToFolder}
+                      onOpenFolderMenu={openFolderMenu}
                       onOpenBookmarkMenu={openBookmarkMenu}
                       onDragBookmarkStart={setDraggingBookmarkId}
                       onDragBookmarkEnd={() => {
                         setDraggingBookmarkId(null);
                         setDropTargetFolderId(null);
                       }}
-                    />
-                  ))}
-
-                  <BookmarkTree
-                    nodes={folderTree}
-                    selectedFolderId={selectedFolderId}
-                    expandedFolderIds={expandedFolderIds}
-                    folderBookmarkMap={folderBookmarkMap}
-                    visibleFolderIds={visibleFolderIds}
-                    dropTargetFolderId={dropTargetFolderId}
-                    onSelectFolder={setSelectedFolderId}
-                    onToggleExpand={(folderId) => {
-                      setExpandedFolderIds((previous) => {
-                        const next = new Set<string>(previous);
-                        if (next.has(folderId)) {
-                          next.delete(folderId);
+                      registerFolderElement={(folderId, element) => {
+                        if (element) {
+                          folderElementMapRef.current.set(folderId, element);
                         } else {
-                          next.add(folderId);
+                          folderElementMapRef.current.delete(folderId);
                         }
-                        return next;
-                      });
-                    }}
-                    onDragOverFolder={setDropTargetFolderId}
-                    onDragLeaveFolder={() => setDropTargetFolderId(null)}
-                    onDropToFolder={dropBookmarkToFolder}
-                    onOpenFolderMenu={openFolderMenu}
-                    onOpenBookmarkMenu={openBookmarkMenu}
-                    onDragBookmarkStart={setDraggingBookmarkId}
-                    onDragBookmarkEnd={() => {
-                      setDraggingBookmarkId(null);
-                      setDropTargetFolderId(null);
-                    }}
-                    registerFolderElement={(folderId, element) => {
-                      if (element) {
-                        folderElementMapRef.current.set(folderId, element);
-                      } else {
-                        folderElementMapRef.current.delete(folderId);
-                      }
-                    }}
-                  />
-                </div>
-              ) : null}
-            </li>
-          </ul>
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </li>
+            </ul>
+          )}
         </div>
       </section>
 
