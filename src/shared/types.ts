@@ -1,4 +1,4 @@
-export type BookmarkNodeType = 'bookmark' | 'folder';
+export type BookmarkNodeType = 'bookmark' | 'folder' | 'separator';
 
 export interface BookmarkNode {
   id: string;
@@ -33,6 +33,9 @@ export type RuntimeRequest =
   | { type: 'bookmarks/get-index' }
   | { type: 'bookmarks/rebuild-index' }
   | { type: 'bookmarks/move'; bookmarkId: string; parentId: string }
+  | { type: 'bookmarks/create-folder'; parentId: string; title: string }
+  | { type: 'bookmarks/create-bookmark'; parentId: string; title: string; url: string }
+  | { type: 'bookmarks/delete-folder'; folderId: string }
   | { type: 'bookmarks/update'; bookmarkId: string; title: string; url: string }
   | { type: 'bookmarks/delete'; bookmarkId: string };
 
@@ -41,6 +44,8 @@ export type RuntimeResponse =
   | { ok: true; index: BookmarkIndexSnapshot }
   | { ok: true; rebuiltAt: number }
   | { ok: true; movedId: string }
+  | { ok: true; created: BookmarkNode }
+  | { ok: true; deletedFolderId: string }
   | { ok: true; updatedId: string }
   | { ok: true; deletedId: string }
   | { ok: false; error: string };

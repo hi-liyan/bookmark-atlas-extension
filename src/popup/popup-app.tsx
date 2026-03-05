@@ -1,38 +1,55 @@
+
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { browser } from '../shared/browser';
+import { normalizeText } from '../shared/normalize';
 import type { BookmarkIndexItem } from '../shared/types';
 import { BookmarkFavicon } from './bookmark-favicon';
 import { usePopupStore } from './store';
-import { loadPopupViewState, savePopupViewState } from './view-state-storage';
 import { sanitizePopupViewStateSnapshot } from './view-state';
+import { loadPopupViewState, savePopupViewState } from './view-state-storage';
 import {
   buildFolderTree,
   collectAllFolderIds,
-  collectFolderSubtreeIds,
-  filterBookmarks,
   flattenFolderTree,
   ROOT_FOLDER_ID,
   type FolderViewNode
 } from './view-model';
 
-interface FolderTreeProps {
+interface BookmarkTreeProps {
   nodes: FolderViewNode[];
   selectedFolderId: string;
   expandedFolderIds: Set<string>;
+  folderBookmarkMap: Map<string, BookmarkIndexItem[]>;
+  visibleFolderIds: Set<string> | null;
   dropTargetFolderId: string | null;
   onSelectFolder: (folderId: string) => void;
   onToggleExpand: (folderId: string) => void;
   onDragOverFolder: (folderId: string) => void;
   onDragLeaveFolder: () => void;
   onDropToFolder: (folderId: string) => void;
+  onOpenFolderMenu: (event: ReactMouseEvent<HTMLElement>, folderId: string, title: string) => void;
+  onOpenBookmarkMenu: (event: ReactMouseEvent<HTMLElement>, item: BookmarkIndexItem) => void;
+  onDragBookmarkStart: (bookmarkId: string) => void;
+  onDragBookmarkEnd: () => void;
   registerFolderElement: (folderId: string, element: HTMLButtonElement | null) => void;
 }
 
-interface BookmarkContextMenuState {
-  x: number;
-  y: number;
-  item: BookmarkIndexItem;
-}
+type PopupContextMenuState =
+  | {
+      kind: 'bookmark';
+      x: number;
+      y: number;
+      item: BookmarkIndexItem;
+    }
+  | {
+      kind: 'folder';
+      x: number;
+      y: number;
+      folderId: string;
+      title: string;
+      canDelete: boolean;
+      createParentId: string | null;
+    };
 
 interface EditBookmarkDraft {
   id: string;
@@ -40,161 +57,242 @@ interface EditBookmarkDraft {
   url: string;
 }
 
+interface CreateFolderDraft {
+  parentId: string;
+  title: string;
+}
+
+interface CreateBookmarkDraft {
+  parentId: string;
+  title: string;
+  url: string;
+}
+
+interface DeleteFolderDraft {
+  id: string;
+  title: string;
+}
+
 /**
- * 渲染目录树节点，支持点击选中与拖拽放置高亮。
+ * 目录图标：用于在目录名称前提供统一视觉标识。
+ * 入参：无。
+ * 出参：目录 SVG 图标。
  */
-const FolderTree = ({
+const FolderIcon = () => {
+  return (
+    <svg
+      aria-hidden
+      className="h-4 w-4 shrink-0 text-amber-500"
+      fill="none"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4.293a1 1 0 0 1 .707.293l1.207 1.207H18.5A2.5 2.5 0 0 1 21 9v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5v-9Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+};
+
+/**
+ * 渲染单条书签行，支持右键和拖拽移动。
+ * 入参：书签项与交互回调。
+ * 出参：书签 JSX 节点。
+ */
+const BookmarkRow = ({
+  item,
+  onOpenBookmarkMenu,
+  onDragBookmarkStart,
+  onDragBookmarkEnd
+}: {
+  item: BookmarkIndexItem;
+  onOpenBookmarkMenu: (event: ReactMouseEvent<HTMLElement>, targetItem: BookmarkIndexItem) => void;
+  onDragBookmarkStart: (bookmarkId: string) => void;
+  onDragBookmarkEnd: () => void;
+}) => {
+  return (
+    <article
+      className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm"
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.setData('text/bookmark-id', item.id);
+        event.dataTransfer.effectAllowed = 'move';
+        onDragBookmarkStart(item.id);
+      }}
+      onDragEnd={onDragBookmarkEnd}
+      onContextMenu={(event) => onOpenBookmarkMenu(event, item)}
+    >
+      {/* 书签主体：左侧 favicon，右侧标题与 URL。 */}
+      <div className="flex items-start gap-2">
+        {/* 站点图标：优先显示 favicon，失败时回退首字母。 */}
+        <BookmarkFavicon url={item.url} title={item.title} sizeClassName="mt-0.5 h-4 w-4" />
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-1 text-xs font-medium text-slate-800">{item.title || '未命名书签'}</p>
+          <p className="line-clamp-1 text-[11px] text-slate-500">{item.url ?? '-'}</p>
+        </div>
+      </div>
+    </article>
+  );
+};
+
+/**
+ * 渲染“目录下直接展示书签”的递归树。
+ * 入参：目录节点、目录对应书签映射与交互回调。
+ * 出参：目录书签树 JSX。
+ */
+const BookmarkTree = ({
   nodes,
   selectedFolderId,
   expandedFolderIds,
+  folderBookmarkMap,
+  visibleFolderIds,
   dropTargetFolderId,
   onSelectFolder,
   onToggleExpand,
   onDragOverFolder,
   onDragLeaveFolder,
   onDropToFolder,
+  onOpenFolderMenu,
+  onOpenBookmarkMenu,
+  onDragBookmarkStart,
+  onDragBookmarkEnd,
   registerFolderElement
-}: FolderTreeProps) => (
-  <ul className="space-y-1">
-    {nodes.map((node) => {
-      const selected = node.id === selectedFolderId;
-      const dropTarget = node.id === dropTargetFolderId;
-      const hasChildren = node.children.length > 0;
-      const expanded = expandedFolderIds.has(node.id);
+}: BookmarkTreeProps) => {
+  return (
+    <ul className="space-y-1.5">
+      {nodes.map((node) => {
+        if (visibleFolderIds && !visibleFolderIds.has(node.id)) {
+          return null;
+        }
 
-      return (
-        <li key={node.id}>
-          {/* 目录节点行：图标控制展开，名称负责切换右侧内容 */}
-          <div className="flex items-center gap-1">
-            {hasChildren ? (
+        const folderBookmarks = folderBookmarkMap.get(node.id) ?? [];
+        const visibleChildren = visibleFolderIds
+          ? node.children.filter((child) => visibleFolderIds.has(child.id))
+          : node.children;
+        const expandable = folderBookmarks.length > 0 || visibleChildren.length > 0;
+        const expanded = expandedFolderIds.has(node.id);
+        const selected = node.id === selectedFolderId;
+        const dropTarget = node.id === dropTargetFolderId;
+
+        return (
+          <li key={node.id}>
+            {/* 目录行：目录后直接展示该目录书签。 */}
+            <div className="flex items-center gap-1">
+              {expandable ? (
+                <button
+                  className="inline-flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 transition hover:bg-slate-100"
+                  onClick={() => onToggleExpand(node.id)}
+                  type="button"
+                >
+                  {expanded ? '▼' : '▶'}
+                </button>
+              ) : (
+                <span aria-hidden className="inline-block h-6 w-6" />
+              )}
               <button
-                className="inline-flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 transition hover:bg-slate-100"
-                onClick={() => onToggleExpand(node.id)}
+                ref={(element) => registerFolderElement(node.id, element)}
+                className={`flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                  selected ? 'bg-emerald-100 text-emerald-900 shadow-sm' : 'text-slate-700 hover:bg-slate-100'
+                } ${dropTarget ? 'ring-2 ring-emerald-300' : ''}`}
+                onClick={() => onSelectFolder(node.id)}
+                onContextMenu={(event) => onOpenFolderMenu(event, node.id, node.title)}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  onDragOverFolder(node.id);
+                }}
+                onDragLeave={onDragLeaveFolder}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  onDropToFolder(node.id);
+                }}
                 type="button"
               >
-                {expanded ? '▾' : '▸'}
+                {/* 目录图标：明确当前行为目录节点。 */}
+                <div className="inline-flex items-center gap-1.5">
+                  <FolderIcon />
+                  <span className="truncate">{node.title}</span>
+                </div>
               </button>
-            ) : (
-              // 最后一级目录不展示展开图标，用占位保持对齐。
-              <span aria-hidden className="inline-block h-6 w-6" />
-            )}
-            <button
-              ref={(element) => registerFolderElement(node.id, element)}
-              className={`flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                selected
-                  ? 'bg-emerald-100 text-emerald-900 shadow-sm'
-                  : 'text-slate-700 hover:bg-slate-100'
-              } ${dropTarget ? 'ring-2 ring-emerald-300' : ''}`}
-              onClick={() => onSelectFolder(node.id)}
-              onDragOver={(event) => {
-                event.preventDefault();
-                onDragOverFolder(node.id);
-              }}
-              onDragLeave={() => onDragLeaveFolder()}
-              onDrop={(event) => {
-                event.preventDefault();
-                onDropToFolder(node.id);
-              }}
-              type="button"
-            >
-              <span className="truncate">{node.title}</span>
-            </button>
-          </div>
-          {hasChildren && expanded ? (
-            <div className="ml-4 border-l border-slate-200 pl-2">
-              <FolderTree
-                nodes={node.children}
-                selectedFolderId={selectedFolderId}
-                expandedFolderIds={expandedFolderIds}
-                dropTargetFolderId={dropTargetFolderId}
-                onSelectFolder={onSelectFolder}
-                onToggleExpand={onToggleExpand}
-                onDragOverFolder={onDragOverFolder}
-                onDragLeaveFolder={onDragLeaveFolder}
-                onDropToFolder={onDropToFolder}
-                registerFolderElement={registerFolderElement}
-              />
             </div>
-          ) : null}
-        </li>
-      );
-    })}
-  </ul>
-);
+
+            {expanded ? (
+              <div className="ml-6 mt-1 space-y-1">
+                {folderBookmarks.map((item) => (
+                  <BookmarkRow
+                    key={item.id}
+                    item={item}
+                    onOpenBookmarkMenu={onOpenBookmarkMenu}
+                    onDragBookmarkStart={onDragBookmarkStart}
+                    onDragBookmarkEnd={onDragBookmarkEnd}
+                  />
+                ))}
+
+                {visibleChildren.length > 0 ? (
+                  <BookmarkTree
+                    nodes={visibleChildren}
+                    selectedFolderId={selectedFolderId}
+                    expandedFolderIds={expandedFolderIds}
+                    folderBookmarkMap={folderBookmarkMap}
+                    visibleFolderIds={visibleFolderIds}
+                    dropTargetFolderId={dropTargetFolderId}
+                    onSelectFolder={onSelectFolder}
+                    onToggleExpand={onToggleExpand}
+                    onDragOverFolder={onDragOverFolder}
+                    onDragLeaveFolder={onDragLeaveFolder}
+                    onDropToFolder={onDropToFolder}
+                    onOpenFolderMenu={onOpenFolderMenu}
+                    onOpenBookmarkMenu={onOpenBookmarkMenu}
+                    onDragBookmarkStart={onDragBookmarkStart}
+                    onDragBookmarkEnd={onDragBookmarkEnd}
+                    registerFolderElement={registerFolderElement}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
 
 /**
- * 右侧书签列表：按卡片展示，支持拖拽用于目录移动。
- */
-const BookmarkCards = ({
-  items,
-  draggingBookmarkId,
-  isDragMoveMode,
-  isSearchMode,
-  onStartDragging,
-  onOpenBookmarkFolder,
-  onOpenContextMenu
-}: {
-  items: BookmarkIndexItem[];
-  draggingBookmarkId: string | null;
-  isDragMoveMode: boolean;
-  isSearchMode: boolean;
-  onStartDragging: (bookmarkId: string) => void;
-  onOpenBookmarkFolder: (item: BookmarkIndexItem) => void;
-  onOpenContextMenu: (event: ReactMouseEvent<HTMLElement>, item: BookmarkIndexItem) => void;
-}) => (
-  <div className="h-full space-y-2 overflow-y-auto pr-1">
-    {items.map((item) => (
-      <article
-        key={item.id}
-        className={`rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition ${
-          draggingBookmarkId === item.id ? 'opacity-60' : ''
-        } ${isDragMoveMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
-        draggable={isDragMoveMode}
-        onDragStart={(event) => {
-          if (!isDragMoveMode) {
-            return;
-          }
-          event.dataTransfer.setData('text/bookmark-id', item.id);
-          event.dataTransfer.effectAllowed = 'move';
-          onStartDragging(item.id);
-        }}
-        onClick={() => {
-          // 仅在搜索结果模式下点击卡片时，定位到左侧对应目录。
-          if (isSearchMode) {
-            onOpenBookmarkFolder(item);
-          }
-        }}
-        onContextMenu={(event) => onOpenContextMenu(event, item)}
-      >
-        {/* 书签主信息区域：左侧 favicon + 右侧标题、URL 与路径 */}
-        <div className="flex items-start gap-2">
-          {/* 站点图标：优先使用浏览器/站点 favicon，失败时回退字母占位 */}
-          <BookmarkFavicon url={item.url} title={item.title} sizeClassName="mt-0.5 h-5 w-5" />
-          <div className="min-w-0 flex-1">
-            <h3 className="mb-1 line-clamp-1 text-sm font-semibold text-slate-800">
-              {item.title || '未命名书签'}
-            </h3>
-            <p className="mb-2 line-clamp-1 text-xs text-slate-500">{item.url ?? '-'}</p>
-            {/* 路径提示区域：用于帮助识别当前书签来源目录 */}
-            <p className="text-xs text-slate-400">{item.path.join(' / ') || '根目录'}</p>
-          </div>
-        </div>
-      </article>
-    ))}
-  </div>
-);
-
-/**
- * 打开扩展设置页，便于用户管理同步与快捷键配置。
- * 入参：无。
- * 出参：Promise<void>。
+ * 打开扩展设置页。
  */
 const openOptionsPage = async (): Promise<void> => {
   await browser.runtime.openOptionsPage();
 };
 
 /**
- * Popup 主界面：负责目录选择、书签筛选与拖拽移动交互。
+ * 限制菜单坐标，防止弹层超出 popup 视口。
+ */
+const clampMenuPosition = (
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): { x: number; y: number } => {
+  const EDGE_PADDING = 8;
+  return {
+    x: Math.max(EDGE_PADDING, Math.min(x, window.innerWidth - width - EDGE_PADDING)),
+    y: Math.max(EDGE_PADDING, Math.min(y, window.innerHeight - height - EDGE_PADDING))
+  };
+};
+
+/**
+ * 从书签树中解析浏览器根目录 ID。
+ */
+const resolveBrowserRootFolderId = (tree: ReturnType<typeof usePopupStore.getState>['tree']): string | null => {
+  const rootNode = tree.find((node) => node.type === 'folder' && !node.parentId);
+  return rootNode?.id ?? null;
+};
+
+/**
+ * Popup 主界面：目录与书签同树展示，目录下直接显示书签。
  */
 export const PopupApp = () => {
   const {
@@ -209,32 +307,37 @@ export const PopupApp = () => {
     setSelectedFolderId,
     load,
     moveBookmark,
+    createFolder,
+    createBookmark,
+    deleteFolder,
     updateBookmark,
     deleteBookmark
   } = usePopupStore();
+
   const [draggingBookmarkId, setDraggingBookmarkId] = useState<string | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
-  const [isDragMoveMode, setIsDragMoveMode] = useState(false);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set<string>());
-  const [contextMenu, setContextMenu] = useState<BookmarkContextMenuState | null>(null);
+  const [contextMenu, setContextMenu] = useState<PopupContextMenuState | null>(null);
   const [editingDraft, setEditingDraft] = useState<EditBookmarkDraft | null>(null);
+  const [createFolderDraft, setCreateFolderDraft] = useState<CreateFolderDraft | null>(null);
+  const [createBookmarkDraft, setCreateBookmarkDraft] = useState<CreateBookmarkDraft | null>(null);
+  const [deleteFolderDraft, setDeleteFolderDraft] = useState<DeleteFolderDraft | null>(null);
   const [deletingItem, setDeletingItem] = useState<BookmarkIndexItem | null>(null);
   const [editFormError, setEditFormError] = useState('');
+  const [folderFormError, setFolderFormError] = useState('');
+  const [bookmarkFormError, setBookmarkFormError] = useState('');
+
   const folderElementMapRef = useRef<Map<string, HTMLButtonElement>>(new Map<string, HTMLButtonElement>());
-  const pendingScrollFolderIdRef = useRef<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollFolderIdRef = useRef<string | null>(null);
   const hasStoredViewStateRef = useRef(false);
   const hasInitializedExpandStateRef = useRef(false);
   const [viewStateHydrated, setViewStateHydrated] = useState(false);
-  const isSearchMode = query.trim().length > 0;
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  /**
-   * 初始化时恢复 popup 视图状态，保证重新打开后保留上次筛选与目录展开状态。
-   */
   useEffect(() => {
     let cancelled = false;
 
@@ -260,14 +363,64 @@ export const PopupApp = () => {
   }, [setQuery, setSelectedFolderId]);
 
   const folderTree = useMemo(() => buildFolderTree(tree), [tree]);
-  const allFolderIds = useMemo(() => collectAllFolderIds(folderTree), [folderTree]);
   const folderMap = useMemo(() => flattenFolderTree(folderTree), [folderTree]);
-  const selectedFolderSubtreeIds = useMemo(
-    () =>
-      selectedFolderId === ROOT_FOLDER_ID ? null : collectFolderSubtreeIds(folderTree, selectedFolderId),
-    [folderTree, selectedFolderId]
-  );
+  const browserRootFolderId = useMemo(() => resolveBrowserRootFolderId(tree), [tree]);
+  const allFolderIds = useMemo(() => [ROOT_FOLDER_ID, ...collectAllFolderIds(folderTree)], [folderTree]);
   const allExpanded = allFolderIds.length > 0 && allFolderIds.every((folderId) => expandedFolderIds.has(folderId));
+
+  const queryNorm = useMemo(() => normalizeText(query), [query]);
+  const matchedItems = useMemo(() => {
+    if (!queryNorm) {
+      return items;
+    }
+
+    return items.filter((item) => item.titleNorm.includes(queryNorm) || item.urlNorm.includes(queryNorm));
+  }, [items, queryNorm]);
+
+  const { rootBookmarks, folderBookmarkMap } = useMemo(() => {
+    const nextRootBookmarks: BookmarkIndexItem[] = [];
+    const nextFolderBookmarkMap = new Map<string, BookmarkIndexItem[]>();
+
+    matchedItems.forEach((item) => {
+      if (!item.parentId || item.path.length === 0) {
+        nextRootBookmarks.push(item);
+        return;
+      }
+
+      const currentItems = nextFolderBookmarkMap.get(item.parentId) ?? [];
+      currentItems.push(item);
+      nextFolderBookmarkMap.set(item.parentId, currentItems);
+    });
+
+    return {
+      rootBookmarks: nextRootBookmarks,
+      folderBookmarkMap: nextFolderBookmarkMap
+    };
+  }, [matchedItems]);
+
+  const visibleFolderIds = useMemo(() => {
+    if (!queryNorm) {
+      return null;
+    }
+
+    const visible = new Set<string>();
+
+    const markVisible = (node: FolderViewNode): boolean => {
+      const hasBookmark = (folderBookmarkMap.get(node.id)?.length ?? 0) > 0;
+      const hasVisibleChild = node.children.some((child) => markVisible(child));
+      if (hasBookmark || hasVisibleChild) {
+        visible.add(node.id);
+        return true;
+      }
+      return false;
+    };
+
+    folderTree.forEach((node) => {
+      markVisible(node);
+    });
+
+    return visible;
+  }, [folderBookmarkMap, folderTree, queryNorm]);
 
   useEffect(() => {
     if (!viewStateHydrated) {
@@ -280,7 +433,6 @@ export const PopupApp = () => {
         Array.from(previous).filter((folderId) => validFolderIds.has(folderId))
       );
 
-      // 首次初始化时，无历史状态才默认展开全部；之后仅清理失效目录，避免覆盖用户操作。
       if (!hasInitializedExpandStateRef.current) {
         hasInitializedExpandStateRef.current = true;
         if (!hasStoredViewStateRef.current) {
@@ -292,9 +444,6 @@ export const PopupApp = () => {
     });
   }, [allFolderIds, viewStateHydrated]);
 
-  /**
-   * 在目录节点渲染完成后执行滚动定位，确保用户能看到目标目录。
-   */
   useEffect(() => {
     const pendingFolderId = pendingScrollFolderIdRef.current;
     if (!pendingFolderId) {
@@ -308,11 +457,34 @@ export const PopupApp = () => {
 
     folderElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
     pendingScrollFolderIdRef.current = null;
-  }, [expandedFolderIds, selectedFolderId, folderTree]);
+  }, [expandedFolderIds, folderTree]);
 
-  /**
-   * 统一处理右键菜单关闭：点击外部区域或按下 ESC 都会关闭。
-   */
+  useEffect(() => {
+    if (selectedFolderId === ROOT_FOLDER_ID) {
+      return;
+    }
+
+    if (!folderMap.has(selectedFolderId)) {
+      setSelectedFolderId(ROOT_FOLDER_ID);
+    }
+  }, [folderMap, selectedFolderId, setSelectedFolderId]);
+
+  useEffect(() => {
+    if (!viewStateHydrated) {
+      return;
+    }
+
+    const snapshot = sanitizePopupViewStateSnapshot(
+      {
+        query,
+        selectedFolderId,
+        expandedFolderIds: Array.from(expandedFolderIds)
+      },
+      new Set<string>(allFolderIds)
+    );
+    void savePopupViewState(snapshot);
+  }, [allFolderIds, expandedFolderIds, query, selectedFolderId, viewStateHydrated]);
+
   useEffect(() => {
     const handleMouseDown = (event: MouseEvent): void => {
       if (!contextMenuRef.current) {
@@ -337,145 +509,40 @@ export const PopupApp = () => {
     };
   }, []);
 
-  const filteredItems = useMemo(() => {
-    return filterBookmarks(items, selectedFolderId, selectedFolderSubtreeIds, query);
-  }, [items, selectedFolderId, selectedFolderSubtreeIds, query]);
-
-  useEffect(() => {
-    if (selectedFolderId === ROOT_FOLDER_ID) {
-      return;
-    }
-
-    if (!folderMap.has(selectedFolderId)) {
-      // 当目录被外部删除时，自动回退到根目录，避免右侧空白状态不明确。
-      setSelectedFolderId(ROOT_FOLDER_ID);
-    }
-  }, [folderMap, selectedFolderId, setSelectedFolderId]);
-
-  /**
-   * 监听 popup 关键视图状态变化并持久化，供下次打开时恢复。
-   */
-  useEffect(() => {
-    if (!viewStateHydrated) {
-      return;
-    }
-
-    const validFolderIds = new Set<string>(allFolderIds);
-    const snapshot = sanitizePopupViewStateSnapshot(
-      {
-        query,
-        selectedFolderId,
-        expandedFolderIds: Array.from(expandedFolderIds)
-      },
-      validFolderIds
-    );
-    void savePopupViewState(snapshot);
-  }, [allFolderIds, expandedFolderIds, query, selectedFolderId, viewStateHydrated]);
-
-  const selectedFolderTitle =
-    isSearchMode
-      ? '结果'
-      : selectedFolderId === ROOT_FOLDER_ID
-        ? '根目录（未归档）'
-        : folderMap.get(selectedFolderId)?.title ?? '未知目录';
-
-  /**
-   * 搜索结果点击定位：选中书签所属目录并展开其父级路径。
-   */
-  const locateBookmarkFolder = (item: BookmarkIndexItem): void => {
-    const targetFolderId = item.parentId ?? ROOT_FOLDER_ID;
-    if (targetFolderId === ROOT_FOLDER_ID) {
-      setSelectedFolderId(ROOT_FOLDER_ID);
-      pendingScrollFolderIdRef.current = ROOT_FOLDER_ID;
-      return;
-    }
-
-    const expandedPathIds: string[] = [];
-    let cursorId: string | undefined = targetFolderId;
-
-    // 逐级回溯父目录，确保左侧树可见并展开到目标节点。
-    while (cursorId) {
-      expandedPathIds.push(cursorId);
-      cursorId = folderMap.get(cursorId)?.parentId;
-    }
-
-    setExpandedFolderIds((previous) => {
-      const next = new Set<string>(previous);
-      expandedPathIds.forEach((folderId) => next.add(folderId));
-      return next;
-    });
-    setSelectedFolderId(targetFolderId);
-    // 记录待滚动目录，待左侧树展开并渲染后自动定位。
-    pendingScrollFolderIdRef.current = targetFolderId;
-  };
-
-  /**
-   * 打开右键菜单，并根据视口尺寸修正坐标避免菜单溢出。
-   */
-  const openContextMenu = (event: ReactMouseEvent<HTMLElement>, item: BookmarkIndexItem): void => {
+  const openBookmarkMenu = (event: ReactMouseEvent<HTMLElement>, item: BookmarkIndexItem): void => {
     event.preventDefault();
-    const MENU_WIDTH = 190;
-    const MENU_HEIGHT = 236;
-    const EDGE_PADDING = 8;
-
-    const x = Math.max(
-      EDGE_PADDING,
-      Math.min(event.clientX, window.innerWidth - MENU_WIDTH - EDGE_PADDING)
-    );
-    const y = Math.max(
-      EDGE_PADDING,
-      Math.min(event.clientY, window.innerHeight - MENU_HEIGHT - EDGE_PADDING)
-    );
-
-    setContextMenu({ x, y, item });
+    const position = clampMenuPosition(event.clientX, event.clientY, 198, 198);
+    setContextMenu({ kind: 'bookmark', x: position.x, y: position.y, item });
   };
 
-  /**
-   * 进入拖拽移动模式：默认关闭拖拽，只有用户明确点击“移动”才开启。
-   */
-  const enterDragMoveMode = (): void => {
-    setIsDragMoveMode(true);
-    setContextMenu(null);
+  const openFolderMenu = (
+    event: ReactMouseEvent<HTMLElement>,
+    folderId: string,
+    title: string
+  ): void => {
+    event.preventDefault();
+    const isRoot = folderId === ROOT_FOLDER_ID;
+    const createParentId = isRoot ? browserRootFolderId : folderId;
+    const position = clampMenuPosition(event.clientX, event.clientY, 198, 172);
+
+    setContextMenu({ kind: 'folder', x: position.x, y: position.y, folderId, title, canDelete: !isRoot, createParentId });
   };
 
-  /**
-   * 退出拖拽移动模式并清理拖拽中间态，避免残留高亮影响后续操作。
-   */
-  const exitDragMoveMode = (): void => {
-    setIsDragMoveMode(false);
+  const dropBookmarkToFolder = (folderId: string): void => {
+    if (!draggingBookmarkId) {
+      return;
+    }
+
+    const targetParentId = folderId === ROOT_FOLDER_ID ? browserRootFolderId : folderId;
+    if (!targetParentId) {
+      return;
+    }
+
+    void moveBookmark(draggingBookmarkId, targetParentId);
     setDraggingBookmarkId(null);
     setDropTargetFolderId(null);
   };
 
-  /**
-   * 在新标签页打开书签 URL。
-   */
-  const openInNewTab = async (item: BookmarkIndexItem): Promise<void> => {
-    if (!item.url) {
-      return;
-    }
-    await browser.tabs.create({ url: item.url });
-  };
-
-  /**
-   * 在当前激活标签页打开书签 URL；无可用标签时回退为新建标签页。
-   */
-  const openInCurrentTab = async (item: BookmarkIndexItem): Promise<void> => {
-    if (!item.url) {
-      return;
-    }
-
-    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
-    if (activeTab?.id !== undefined) {
-      await browser.tabs.update(activeTab.id, { url: item.url });
-      return;
-    }
-    await browser.tabs.create({ url: item.url });
-  };
-
-  /**
-   * 提交编辑书签表单：采用乐观更新，失败时保持弹窗以便用户修正。
-   */
   const submitEditBookmark = async (): Promise<void> => {
     if (!editingDraft) {
       return;
@@ -495,12 +562,57 @@ export const PopupApp = () => {
     }
 
     setEditingDraft(null);
-    setContextMenu(null);
   };
 
-  /**
-   * 执行删除书签：采用乐观更新，失败时保留确认弹窗便于重试。
-   */
+  const submitCreateFolder = async (): Promise<void> => {
+    if (!createFolderDraft) {
+      return;
+    }
+
+    const title = createFolderDraft.title.trim();
+    if (!title) {
+      setFolderFormError('目录名称不能为空');
+      return;
+    }
+
+    setFolderFormError('');
+    const createdFolderId = await createFolder(createFolderDraft.parentId, title);
+    if (!createdFolderId) {
+      return;
+    }
+
+    setExpandedFolderIds((previous) => {
+      const next = new Set<string>(previous);
+      next.add(createFolderDraft.parentId);
+      next.add(createdFolderId);
+      return next;
+    });
+    setSelectedFolderId(createdFolderId);
+    setCreateFolderDraft(null);
+    pendingScrollFolderIdRef.current = createdFolderId;
+  };
+
+  const submitCreateBookmark = async (): Promise<void> => {
+    if (!createBookmarkDraft) {
+      return;
+    }
+
+    const title = createBookmarkDraft.title.trim();
+    const url = createBookmarkDraft.url.trim();
+    if (!url) {
+      setBookmarkFormError('书签 URL 不能为空');
+      return;
+    }
+
+    setBookmarkFormError('');
+    const created = await createBookmark(createBookmarkDraft.parentId, title, url);
+    if (!created) {
+      return;
+    }
+
+    setCreateBookmarkDraft(null);
+  };
+
   const confirmDeleteBookmark = async (): Promise<void> => {
     if (!deletingItem) {
       return;
@@ -512,19 +624,31 @@ export const PopupApp = () => {
     }
 
     setDeletingItem(null);
-    setContextMenu(null);
+  };
+
+  const confirmDeleteFolder = async (): Promise<void> => {
+    if (!deleteFolderDraft) {
+      return;
+    }
+
+    const deleted = await deleteFolder(deleteFolderDraft.id);
+    if (!deleted) {
+      return;
+    }
+
+    setDeleteFolderDraft(null);
   };
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-emerald-50 to-cyan-50 p-4 text-slate-800">
-      {/* 顶栏区域：标题、状态与刷新入口 */}
+      {/* 顶栏区域：标题、状态与刷新入口。 */}
       <header className="mb-3 rounded-2xl border border-white/60 bg-white/80 p-3 shadow-sm backdrop-blur">
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
             <h1 className="text-lg font-semibold tracking-wide">Bookmark Atlas</h1>
-            <p className="text-xs text-slate-500">左侧目录，右侧内容，右键书签可开启移动模式</p>
+            <p className="text-xs text-slate-500">目录下直接显示书签，支持拖拽到其他目录。</p>
           </div>
-          {/* 顶栏操作区：提供设置入口与刷新入口 */}
+          {/* 顶栏操作区：设置与刷新。 */}
           <div className="flex items-center gap-2">
             <button
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
@@ -542,20 +666,8 @@ export const PopupApp = () => {
             </button>
           </div>
         </div>
-        {isDragMoveMode ? (
-          <div className="mb-2 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-            {/* 拖拽模式提示区：明确当前可拖拽，避免误操作 */}
-            <span className="text-xs font-medium text-amber-800">拖拽移动模式</span>
-            <button
-              className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs text-amber-800 transition hover:bg-amber-100"
-              onClick={exitDragMoveMode}
-              type="button"
-            >
-              退出
-            </button>
-          </div>
-        ) : null}
-        {/* 搜索区域：始终在全局范围搜索标题和 URL */}
+
+        {/* 搜索框：全局匹配标题和 URL。 */}
         <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
           <span className="text-slate-400">⌕</span>
           <input
@@ -569,237 +681,318 @@ export const PopupApp = () => {
       </header>
 
       {loading ? <div className="mb-3 rounded-lg bg-cyan-100 px-3 py-2 text-sm text-cyan-800">正在加载书签...</div> : null}
-      {moving ? <div className="mb-3 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800">正在移动书签...</div> : null}
+      {moving ? <div className="mb-3 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800">正在同步变更...</div> : null}
       {error ? <div className="mb-3 rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-800">{error}</div> : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[260px_1fr] gap-3 overflow-hidden">
-        {/* 左侧目录区域：展示层级目录并接收拖拽放置 */}
-        <aside className="flex min-h-0 flex-col rounded-2xl border border-white/60 bg-white/90 p-3 shadow-sm">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-700">目录</h2>
-            <button
-              className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-200"
-              onClick={() => {
-                setExpandedFolderIds(allExpanded ? new Set<string>() : new Set<string>(allFolderIds));
-              }}
-              type="button"
-            >
-              {allExpanded ? '全部收起' : '全部展开'}
-            </button>
-          </div>
+      {/* 单窗口树区域：目录后直接展示其书签。 */}
+      <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-white/60 bg-white/90 p-3 shadow-sm">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-700">目录树</h2>
           <button
-            ref={(element) => {
-              if (element) {
-                folderElementMapRef.current.set(ROOT_FOLDER_ID, element);
-              } else {
-                folderElementMapRef.current.delete(ROOT_FOLDER_ID);
-              }
-            }}
-            className={`mb-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-              selectedFolderId === ROOT_FOLDER_ID
-                ? 'bg-emerald-100 text-emerald-900 shadow-sm'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-            onClick={() => setSelectedFolderId(ROOT_FOLDER_ID)}
+            className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-200"
+            onClick={() => setExpandedFolderIds(allExpanded ? new Set<string>() : new Set<string>(allFolderIds))}
             type="button"
           >
-            根目录（未归档）
+            {allExpanded ? '全部收起' : '全部展开'}
           </button>
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-            <FolderTree
-              nodes={folderTree}
-              selectedFolderId={selectedFolderId}
-              expandedFolderIds={expandedFolderIds}
-              dropTargetFolderId={dropTargetFolderId}
-              onSelectFolder={setSelectedFolderId}
-              onToggleExpand={(folderId) => {
-                setExpandedFolderIds((previous) => {
-                  const next = new Set<string>(previous);
-                  // 根据当前状态切换目录展开集合。
-                  if (next.has(folderId)) {
-                    next.delete(folderId);
-                  } else {
-                    next.add(folderId);
-                  }
-                  return next;
-                });
-              }}
-              onDragOverFolder={(folderId) => {
-                if (!isDragMoveMode) {
-                  return;
-                }
-                setDropTargetFolderId(folderId);
-              }}
-              onDragLeaveFolder={() => {
-                if (!isDragMoveMode) {
-                  return;
-                }
-                setDropTargetFolderId(null);
-              }}
-              onDropToFolder={(folderId) => {
-                if (!isDragMoveMode) {
-                  return;
-                }
-                if (!draggingBookmarkId) {
-                  return;
-                }
-                setDropTargetFolderId(null);
-                void moveBookmark(draggingBookmarkId, folderId);
-                setDraggingBookmarkId(null);
-              }}
-              registerFolderElement={(folderId, element) => {
-                if (element) {
-                  folderElementMapRef.current.set(folderId, element);
-                } else {
-                  folderElementMapRef.current.delete(folderId);
-                }
-              }}
-            />
-          </div>
-        </aside>
+        </div>
 
-        {/* 右侧内容区域：展示当前目录的书签列表 */}
-        <section className="flex min-h-0 flex-col rounded-2xl border border-white/60 bg-white/90 p-3 shadow-sm">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-700">{selectedFolderTitle}</h2>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-              {filteredItems.length} 条
-            </span>
-          </div>
-          {filteredItems.length > 0 ? (
-            <div
-              onDragEnd={() => {
-                setDraggingBookmarkId(null);
-                setDropTargetFolderId(null);
-              }}
-              className="min-h-0 flex-1 overflow-hidden"
-            >
-              <BookmarkCards
-                items={filteredItems}
-                draggingBookmarkId={draggingBookmarkId}
-                isDragMoveMode={isDragMoveMode}
-                isSearchMode={isSearchMode}
-                onStartDragging={setDraggingBookmarkId}
-                onOpenBookmarkFolder={locateBookmarkFolder}
-                onOpenContextMenu={openContextMenu}
-              />
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-400">
-              当前目录没有匹配书签
-            </div>
-          )}
-        </section>
-      </div>
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <ul className="space-y-1.5">
+            <li>
+              <div className="flex items-center gap-1">
+                {rootBookmarks.length > 0 || folderTree.length > 0 ? (
+                  <button
+                    className="inline-flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 transition hover:bg-slate-100"
+                    onClick={() => {
+                      setExpandedFolderIds((previous) => {
+                        const next = new Set<string>(previous);
+                        if (next.has(ROOT_FOLDER_ID)) {
+                          next.delete(ROOT_FOLDER_ID);
+                        } else {
+                          next.add(ROOT_FOLDER_ID);
+                        }
+                        return next;
+                      });
+                    }}
+                    type="button"
+                  >
+                    {expandedFolderIds.has(ROOT_FOLDER_ID) ? '▼' : '▶'}
+                  </button>
+                ) : (
+                  <span aria-hidden className="inline-block h-6 w-6" />
+                )}
+
+                <button
+                  ref={(element) => {
+                    if (element) {
+                      folderElementMapRef.current.set(ROOT_FOLDER_ID, element);
+                    } else {
+                      folderElementMapRef.current.delete(ROOT_FOLDER_ID);
+                    }
+                  }}
+                  className={`flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                    selectedFolderId === ROOT_FOLDER_ID
+                      ? 'bg-emerald-100 text-emerald-900 shadow-sm'
+                      : 'text-slate-700 hover:bg-slate-100'
+                  } ${dropTargetFolderId === ROOT_FOLDER_ID ? 'ring-2 ring-emerald-300' : ''}`}
+                  onClick={() => setSelectedFolderId(ROOT_FOLDER_ID)}
+                  onContextMenu={(event) => openFolderMenu(event, ROOT_FOLDER_ID, '根目录（未归档）')}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDropTargetFolderId(ROOT_FOLDER_ID);
+                  }}
+                  onDragLeave={() => setDropTargetFolderId(null)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    dropBookmarkToFolder(ROOT_FOLDER_ID);
+                  }}
+                  type="button"
+                >
+                  {/* 根目录图标：与其他目录保持一致的视觉语义。 */}
+                  <div className="inline-flex items-center gap-1.5">
+                    <FolderIcon />
+                    <span className="truncate">根目录（未归档）</span>
+                  </div>
+                </button>
+              </div>
+
+              {expandedFolderIds.has(ROOT_FOLDER_ID) ? (
+                <div className="ml-6 mt-1 space-y-1">
+                  {rootBookmarks.map((item) => (
+                    <BookmarkRow
+                      key={item.id}
+                      item={item}
+                      onOpenBookmarkMenu={openBookmarkMenu}
+                      onDragBookmarkStart={setDraggingBookmarkId}
+                      onDragBookmarkEnd={() => {
+                        setDraggingBookmarkId(null);
+                        setDropTargetFolderId(null);
+                      }}
+                    />
+                  ))}
+
+                  <BookmarkTree
+                    nodes={folderTree}
+                    selectedFolderId={selectedFolderId}
+                    expandedFolderIds={expandedFolderIds}
+                    folderBookmarkMap={folderBookmarkMap}
+                    visibleFolderIds={visibleFolderIds}
+                    dropTargetFolderId={dropTargetFolderId}
+                    onSelectFolder={setSelectedFolderId}
+                    onToggleExpand={(folderId) => {
+                      setExpandedFolderIds((previous) => {
+                        const next = new Set<string>(previous);
+                        if (next.has(folderId)) {
+                          next.delete(folderId);
+                        } else {
+                          next.add(folderId);
+                        }
+                        return next;
+                      });
+                    }}
+                    onDragOverFolder={setDropTargetFolderId}
+                    onDragLeaveFolder={() => setDropTargetFolderId(null)}
+                    onDropToFolder={dropBookmarkToFolder}
+                    onOpenFolderMenu={openFolderMenu}
+                    onOpenBookmarkMenu={openBookmarkMenu}
+                    onDragBookmarkStart={setDraggingBookmarkId}
+                    onDragBookmarkEnd={() => {
+                      setDraggingBookmarkId(null);
+                      setDropTargetFolderId(null);
+                    }}
+                    registerFolderElement={(folderId, element) => {
+                      if (element) {
+                        folderElementMapRef.current.set(folderId, element);
+                      } else {
+                        folderElementMapRef.current.delete(folderId);
+                      }
+                    }}
+                  />
+                </div>
+              ) : null}
+            </li>
+          </ul>
+        </div>
+      </section>
 
       {contextMenu ? (
         <div
           ref={contextMenuRef}
-          className="fixed z-50 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+          className="fixed z-50 w-[198px] rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          {/* 右键菜单：书签快捷操作入口 */}
-          <button
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
-            onClick={() => {
-              void openInNewTab(contextMenu.item);
-              setContextMenu(null);
-            }}
-            type="button"
-          >
-            在新标签页中打开
-          </button>
-          <button
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
-            onClick={() => {
-              void openInCurrentTab(contextMenu.item);
-              setContextMenu(null);
-            }}
-            type="button"
-          >
-            在当前标签页中打开
-          </button>
-          <div className="my-1 border-t border-slate-200" />
-          {/* 右键移动入口：显式开启拖拽模式，默认不允许拖动卡片。 */}
-          <button
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
-            onClick={enterDragMoveMode}
-            type="button"
-          >
-            移动到其他目录
-          </button>
-          <div className="my-1 border-t border-slate-200" />
-          <button
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
-            onClick={() => {
-              setEditingDraft({
-                id: contextMenu.item.id,
-                title: contextMenu.item.title,
-                url: contextMenu.item.url ?? ''
-              });
-              setEditFormError('');
-              setContextMenu(null);
-            }}
-            type="button"
-          >
-            编辑书签
-          </button>
-          <button
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
-            onClick={() => {
-              setDeletingItem(contextMenu.item);
-              setContextMenu(null);
-            }}
-            type="button"
-          >
-            删除书签
-          </button>
+          {contextMenu.kind === 'bookmark' ? (
+            <>
+              <button
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                onClick={() => {
+                  if (contextMenu.item.url) {
+                    void browser.tabs.create({ url: contextMenu.item.url });
+                  }
+                  setContextMenu(null);
+                }}
+                type="button"
+              >
+                在新标签页中打开
+              </button>
+              <button
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                onClick={async () => {
+                  const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
+                  if (activeTab?.id !== undefined && contextMenu.item.url) {
+                    await browser.tabs.update(activeTab.id, { url: contextMenu.item.url });
+                  }
+                  setContextMenu(null);
+                }}
+                type="button"
+              >
+                在当前标签页中打开
+              </button>
+              <div className="my-1 border-t border-slate-200" />
+              <button
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                onClick={() => {
+                  setEditingDraft({ id: contextMenu.item.id, title: contextMenu.item.title, url: contextMenu.item.url ?? '' });
+                  setEditFormError('');
+                  setContextMenu(null);
+                }}
+                type="button"
+              >
+                编辑书签
+              </button>
+              <button
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
+                onClick={() => {
+                  setDeletingItem(contextMenu.item);
+                  setContextMenu(null);
+                }}
+                type="button"
+              >
+                删除书签
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                onClick={() => {
+                  if (!contextMenu.createParentId) {
+                    return;
+                  }
+                  setCreateFolderDraft({ parentId: contextMenu.createParentId, title: '' });
+                  setFolderFormError('');
+                  setContextMenu(null);
+                }}
+                type="button"
+              >
+                新建文件夹
+              </button>
+              <button
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                onClick={() => {
+                  if (!contextMenu.createParentId) {
+                    return;
+                  }
+                  setCreateBookmarkDraft({ parentId: contextMenu.createParentId, title: '', url: '' });
+                  setBookmarkFormError('');
+                  setContextMenu(null);
+                }}
+                type="button"
+              >
+                新建书签
+              </button>
+              <div className="my-1 border-t border-slate-200" />
+              <button
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                disabled={!contextMenu.canDelete}
+                onClick={() => {
+                  if (!contextMenu.canDelete) {
+                    return;
+                  }
+                  setDeleteFolderDraft({ id: contextMenu.folderId, title: contextMenu.title });
+                  setContextMenu(null);
+                }}
+                type="button"
+              >
+                删除文件夹
+              </button>
+            </>
+          )}
         </div>
       ) : null}
 
       {editingDraft ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          {/* 编辑弹窗：修改标题和 URL */}
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="mb-3 text-base font-semibold text-slate-800">编辑书签</h3>
             <label className="mb-2 block text-xs font-medium text-slate-600">标题</label>
             <input
               className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
               value={editingDraft.title}
-              onChange={(event) =>
-                setEditingDraft((previous) =>
-                  previous ? { ...previous, title: event.target.value } : previous
-                )
-              }
+              onChange={(event) => setEditingDraft((previous) => (previous ? { ...previous, title: event.target.value } : previous))}
               type="text"
             />
             <label className="mb-2 block text-xs font-medium text-slate-600">URL</label>
             <input
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
               value={editingDraft.url}
-              onChange={(event) =>
-                setEditingDraft((previous) =>
-                  previous ? { ...previous, url: event.target.value } : previous
-                )
-              }
+              onChange={(event) => setEditingDraft((previous) => (previous ? { ...previous, url: event.target.value } : previous))}
               type="url"
             />
             {editFormError ? <p className="mt-2 text-xs text-rose-600">{editFormError}</p> : null}
             <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100"
-                onClick={() => setEditingDraft(null)}
-                type="button"
-              >
-                取消
-              </button>
-              <button
-                className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white transition hover:bg-slate-700"
-                onClick={() => void submitEditBookmark()}
-                type="button"
-              >
-                保存
-              </button>
+              <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100" onClick={() => setEditingDraft(null)} type="button">取消</button>
+              <button className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white transition hover:bg-slate-700" onClick={() => void submitEditBookmark()} type="button">保存</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {createFolderDraft ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+            <h3 className="mb-3 text-base font-semibold text-slate-800">新建文件夹</h3>
+            <label className="mb-2 block text-xs font-medium text-slate-600">文件夹名称</label>
+            <input
+              autoFocus
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              value={createFolderDraft.title}
+              onChange={(event) => setCreateFolderDraft((previous) => (previous ? { ...previous, title: event.target.value } : previous))}
+              type="text"
+            />
+            {folderFormError ? <p className="mt-2 text-xs text-rose-600">{folderFormError}</p> : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100" onClick={() => setCreateFolderDraft(null)} type="button">取消</button>
+              <button className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white transition hover:bg-slate-700" onClick={() => void submitCreateFolder()} type="button">创建</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {createBookmarkDraft ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+            <h3 className="mb-3 text-base font-semibold text-slate-800">新建书签</h3>
+            <label className="mb-2 block text-xs font-medium text-slate-600">标题</label>
+            <input
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              value={createBookmarkDraft.title}
+              onChange={(event) => setCreateBookmarkDraft((previous) => (previous ? { ...previous, title: event.target.value } : previous))}
+              type="text"
+            />
+            <label className="mb-2 block text-xs font-medium text-slate-600">URL</label>
+            <input
+              autoFocus
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400"
+              value={createBookmarkDraft.url}
+              onChange={(event) => setCreateBookmarkDraft((previous) => (previous ? { ...previous, url: event.target.value } : previous))}
+              type="url"
+            />
+            {bookmarkFormError ? <p className="mt-2 text-xs text-rose-600">{bookmarkFormError}</p> : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100" onClick={() => setCreateBookmarkDraft(null)} type="button">取消</button>
+              <button className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white transition hover:bg-slate-700" onClick={() => void submitCreateBookmark()} type="button">创建</button>
             </div>
           </div>
         </div>
@@ -807,27 +1000,25 @@ export const PopupApp = () => {
 
       {deletingItem ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          {/* 删除确认弹窗：满足删除操作二次确认要求 */}
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="mb-2 text-base font-semibold text-slate-800">删除书签</h3>
-            <p className="mb-4 text-sm text-slate-600">
-              确认删除“{deletingItem.title || '未命名书签'}”？该操作不可撤销。
-            </p>
+            <p className="mb-4 text-sm text-slate-600">确认删除“{deletingItem.title || '未命名书签'}”？该操作不可撤销。</p>
             <div className="flex justify-end gap-2">
-              <button
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100"
-                onClick={() => setDeletingItem(null)}
-                type="button"
-              >
-                取消
-              </button>
-              <button
-                className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm text-white transition hover:bg-rose-500"
-                onClick={() => void confirmDeleteBookmark()}
-                type="button"
-              >
-                确认删除
-              </button>
+              <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100" onClick={() => setDeletingItem(null)} type="button">取消</button>
+              <button className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm text-white transition hover:bg-rose-500" onClick={() => void confirmDeleteBookmark()} type="button">确认删除</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteFolderDraft ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+            <h3 className="mb-2 text-base font-semibold text-slate-800">删除文件夹</h3>
+            <p className="mb-4 text-sm text-slate-600">确认删除“{deleteFolderDraft.title}”及其所有子目录和书签？该操作不可撤销。</p>
+            <div className="flex justify-end gap-2">
+              <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100" onClick={() => setDeleteFolderDraft(null)} type="button">取消</button>
+              <button className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm text-white transition hover:bg-rose-500" onClick={() => void confirmDeleteFolder()} type="button">确认删除</button>
             </div>
           </div>
         </div>

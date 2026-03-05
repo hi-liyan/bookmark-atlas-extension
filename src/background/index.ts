@@ -1,8 +1,8 @@
 import { browser } from '../shared/browser';
 import { buildBookmarkIndex } from '../shared/bookmark-index';
 import { bookmarkService } from '../shared/bookmark-service';
-import { createSingleFlightController } from './single-flight';
 import type { BookmarkIndexSnapshot, RuntimeRequest, RuntimeResponse } from '../shared/types';
+import { createSingleFlightController } from './single-flight';
 
 const INDEX_STORAGE_KEY = 'bookmark-index-snapshot';
 const QUICK_SEARCH_COMMAND = 'open-quick-search';
@@ -27,7 +27,7 @@ const rebuildIndexController = createSingleFlightController(async (): Promise<Bo
 });
 
 /**
- * 执行索引重建：并发请求会复用同一轮重建结果。
+ * 执行索引重建，并发请求会复用同一轮重建结果。
  * 入参：无。
  * 出参：最新书签索引快照。
  */
@@ -146,49 +146,74 @@ browser.runtime.onStartup.addListener(() => {
   void rebuildIndex();
 });
 
-browser.runtime.onMessage.addListener(
-  async (request: RuntimeRequest): Promise<RuntimeResponse> => {
-    try {
-      if (request.type === 'bookmarks/get-tree') {
-        const tree = await bookmarkService.getTree();
-        return { ok: true, tree };
-      }
-
-      if (request.type === 'bookmarks/get-index') {
-        const index = await getIndex();
-        return { ok: true, index };
-      }
-
-      if (request.type === 'bookmarks/rebuild-index') {
-        const index = await rebuildIndexFresh();
-        return { ok: true, rebuiltAt: index.updatedAt };
-      }
-
-      if (request.type === 'bookmarks/move') {
-        await bookmarkService.move(request.bookmarkId, { parentId: request.parentId });
-        await rebuildIndexFresh();
-        return { ok: true, movedId: request.bookmarkId };
-      }
-
-      if (request.type === 'bookmarks/update') {
-        await bookmarkService.update(request.bookmarkId, {
-          title: request.title,
-          url: request.url
-        });
-        await rebuildIndexFresh();
-        return { ok: true, updatedId: request.bookmarkId };
-      }
-
-      if (request.type === 'bookmarks/delete') {
-        await bookmarkService.remove(request.bookmarkId);
-        await rebuildIndexFresh();
-        return { ok: true, deletedId: request.bookmarkId };
-      }
-
-      return { ok: false, error: 'Unsupported request type.' };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { ok: false, error: message };
+browser.runtime.onMessage.addListener(async (request: RuntimeRequest): Promise<RuntimeResponse> => {
+  try {
+    if (request.type === 'bookmarks/get-tree') {
+      const tree = await bookmarkService.getTree();
+      return { ok: true, tree };
     }
+
+    if (request.type === 'bookmarks/get-index') {
+      const index = await getIndex();
+      return { ok: true, index };
+    }
+
+    if (request.type === 'bookmarks/rebuild-index') {
+      const index = await rebuildIndexFresh();
+      return { ok: true, rebuiltAt: index.updatedAt };
+    }
+
+    if (request.type === 'bookmarks/move') {
+      await bookmarkService.move(request.bookmarkId, { parentId: request.parentId });
+      await rebuildIndexFresh();
+      return { ok: true, movedId: request.bookmarkId };
+    }
+
+    if (request.type === 'bookmarks/create-folder') {
+      const created = await bookmarkService.create({
+        parentId: request.parentId,
+        title: request.title,
+        type: 'folder'
+      });
+      await rebuildIndexFresh();
+      return { ok: true, created };
+    }
+
+    if (request.type === 'bookmarks/create-bookmark') {
+      const created = await bookmarkService.create({
+        parentId: request.parentId,
+        title: request.title,
+        url: request.url,
+        type: 'bookmark'
+      });
+      await rebuildIndexFresh();
+      return { ok: true, created };
+    }
+
+    if (request.type === 'bookmarks/delete-folder') {
+      await bookmarkService.removeTree(request.folderId);
+      await rebuildIndexFresh();
+      return { ok: true, deletedFolderId: request.folderId };
+    }
+
+    if (request.type === 'bookmarks/update') {
+      await bookmarkService.update(request.bookmarkId, {
+        title: request.title,
+        url: request.url
+      });
+      await rebuildIndexFresh();
+      return { ok: true, updatedId: request.bookmarkId };
+    }
+
+    if (request.type === 'bookmarks/delete') {
+      await bookmarkService.remove(request.bookmarkId);
+      await rebuildIndexFresh();
+      return { ok: true, deletedId: request.bookmarkId };
+    }
+
+    return { ok: false, error: 'Unsupported request type.' };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { ok: false, error: message };
   }
-);
+});

@@ -1,9 +1,24 @@
 import { browser } from './browser';
 import type { BookmarkNode } from './types';
 
-const toNodeType = (node: browser.bookmarks.BookmarkTreeNode): 'bookmark' | 'folder' =>
-  node.url ? 'bookmark' : 'folder';
+/**
+ * 规范化书签节点类型：优先使用浏览器原始 type，缺失时按 url 兜底判断。
+ * 入参：浏览器书签树节点。
+ * 出参：统一后的节点类型（bookmark/folder/separator）。
+ */
+const toNodeType = (node: browser.bookmarks.BookmarkTreeNode): 'bookmark' | 'folder' | 'separator' => {
+  if (node.type === 'bookmark' || node.type === 'folder' || node.type === 'separator') {
+    return node.type;
+  }
 
+  return node.url ? 'bookmark' : 'folder';
+};
+
+/**
+ * 将浏览器书签树节点转换为共享 BookmarkNode，确保字段结构统一。
+ * 入参：浏览器书签树节点。
+ * 出参：项目内部书签节点对象。
+ */
 const fromTreeNode = (node: browser.bookmarks.BookmarkTreeNode): BookmarkNode => ({
   id: node.id,
   parentId: node.parentId,

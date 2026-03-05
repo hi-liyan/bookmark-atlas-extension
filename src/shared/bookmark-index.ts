@@ -3,6 +3,11 @@ import { normalizeText, normalizeUrl } from './normalize';
 
 const INDEX_VERSION = 1;
 
+/**
+ * 递归提取可检索书签项：仅收集 bookmark 节点，自动忽略 folder/separator。
+ * 入参：当前节点数组、目录路径、输出数组。
+ * 出参：累计后的书签索引项数组。
+ */
 const collectItems = (
   nodes: BookmarkNode[],
   path: string[] = [],
@@ -14,6 +19,10 @@ const collectItems = (
       if (node.children) {
         collectItems(node.children, nextPath, output);
       }
+      return;
+    }
+
+    if (node.type !== 'bookmark') {
       return;
     }
 
