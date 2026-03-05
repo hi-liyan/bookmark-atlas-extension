@@ -100,7 +100,12 @@ const openBrowserShortcutSettings = async (): Promise<ShortcutSettingsNavigation
 };
 
 export const OptionsApp = () => {
-  const [activeTab, setActiveTab] = useState<'sync' | 'shortcuts'>('sync');
+  // 当前激活 tab：控制设置页三大区域（同步、快捷键、关于）的显示。
+  const [activeTab, setActiveTab] = useState<'sync' | 'shortcuts' | 'about'>('sync');
+  // 扩展基础信息：从 manifest 读取产品名与版本号，确保展示值与构建产物一致。
+  const manifestInfo = browser.runtime.getManifest();
+  const productName = manifestInfo.name || 'Bookmark Atlas';
+  const productVersion = manifestInfo.version || '-';
   const [config, setConfig] = useState<SyncConfig>(defaultConfig);
   const [savedMessage, setSavedMessage] = useState('');
   const [shortcutCommands, setShortcutCommands] = useState<ShortcutCommandView[]>([]);
@@ -176,7 +181,7 @@ export const OptionsApp = () => {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-2xl font-semibold">扩展设置</h1>
-              <p className="text-sm text-slate-500">BooKmark Atlas 扩展设置页。</p>
+              <p className="text-sm text-slate-500">Bookmark Atlas 扩展设置页。</p>
             </div>
             {activeTab === 'sync' ? (
               <div className="flex items-center gap-3">
@@ -194,7 +199,7 @@ export const OptionsApp = () => {
         </header>
 
         <div className="rounded-[15px] border border-slate-200 bg-white p-4 md:p-5">
-          {/* Tab 导航区：切换同步与快捷键两个设置分组 */}
+          {/* Tab 导航区：切换同步、快捷键与关于三个设置分组 */}
           <div className="mb-4 inline-flex w-fit rounded-[10px] bg-[#EFF3F7] p-1">
             <button
               className={`rounded-[8px] px-4 py-2 text-sm font-medium transition ${
@@ -218,136 +223,202 @@ export const OptionsApp = () => {
             >
               快捷键
             </button>
+            <button
+              className={`rounded-[8px] px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'about'
+                  ? 'bg-white text-[#138052] shadow-sm ring-1 ring-[#138052]/20'
+                  : 'text-slate-600 hover:bg-white/80 hover:text-[#138052]'
+              }`}
+              onClick={() => setActiveTab('about')}
+              type="button"
+            >
+              关于
+            </button>
           </div>
 
           {activeTab === 'sync' ? (
             <section>
-              {/* 同步配置区：通过网格分组降低输入项密度 */}
-              <div className="mb-4 flex items-start justify-between gap-3">
+              {/* 同步配置总览：展示本区域用途与全局总开关。 */}
+              <div className="mb-4 flex flex-col gap-3 rounded-[12px] border border-[#138052]/20 bg-[#138052]/5 p-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold">同步配置</h2>
-                  <p className="text-sm text-slate-500">配置 CouchDB 地址、模式和冲突策略。保存后生效。</p>
+                  <h2 className="text-lg font-semibold text-slate-800">同步配置</h2>
+                  <p className="text-sm text-slate-600">按“连接信息 / 同步策略 / 安全与自动化”分组配置，保存后生效。</p>
                 </div>
-                <label className="label cursor-pointer gap-2">
-                  <span className="label-text">启用同步</span>
+                {/* 启用同步开关：决定是否允许后台执行同步流程。 */}
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-3 py-2">
                   <input
                     checked={config.syncEnabled}
-                    className="toggle toggle-primary"
+                    className="h-4 w-4 rounded border-slate-300 text-[#138052] focus:ring-[#138052]/30"
                     onChange={(event) => updateConfig('syncEnabled', event.target.checked)}
                     type="checkbox"
                   />
+                  <span className="text-sm font-medium text-slate-700">启用同步</span>
                 </label>
               </div>
 
-              {/* 连接信息输入区：服务器地址、数据库与账号凭据 */}
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <label className="form-control md:col-span-2">
-                  <span className="label-text mb-1">Server URL</span>
-                  <input
-                    className="input input-bordered w-full"
-                    onChange={(event) => updateConfig('serverUrl', event.target.value)}
-                    placeholder="https://couchdb.example.com"
-                    type="url"
-                    value={config.serverUrl}
-                  />
-                </label>
+              <div className="space-y-4">
+                {/* 连接信息卡片：配置同步服务地址与认证信息。 */}
+                <section className="rounded-[12px] border border-slate-200 bg-[#EFF3F7]/45 p-4">
+                  <h3 className="text-base font-semibold text-slate-800">连接信息</h3>
+                  <p className="mt-1 text-sm text-slate-500">用于建立与 CouchDB 的连接，建议仅填写当前环境所需配置。</p>
+                  <div className="mt-4 space-y-3">
+                    {/* 服务地址行：左侧标签与说明，右侧输入框。 */}
+                    <label className="flex flex-col gap-2 rounded-[10px] border border-slate-200 bg-white p-3 md:flex-row md:items-center md:gap-4">
+                      <span className="shrink-0 md:w-64">
+                        <span className="block text-sm font-medium text-slate-700">Server URL</span>
+                        <span className="mt-1 block text-xs text-slate-500">CouchDB 服务地址，例如 `https://couchdb.example.com`。</span>
+                      </span>
+                      <input
+                        className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#138052] focus:ring-2 focus:ring-[#138052]/15"
+                        onChange={(event) => updateConfig('serverUrl', event.target.value)}
+                        placeholder="https://couchdb.example.com"
+                        type="url"
+                        value={config.serverUrl}
+                      />
+                    </label>
 
-                <label className="form-control">
-                  <span className="label-text mb-1">Database</span>
-                  <input
-                    className="input input-bordered w-full"
-                    onChange={(event) => updateConfig('database', event.target.value)}
-                    type="text"
-                    value={config.database}
-                  />
-                </label>
+                    {/* 数据库名行：左侧标签与说明，右侧输入框。 */}
+                    <label className="flex flex-col gap-2 rounded-[10px] border border-slate-200 bg-white p-3 md:flex-row md:items-center md:gap-4">
+                      <span className="shrink-0 md:w-64">
+                        <span className="block text-sm font-medium text-slate-700">Database</span>
+                        <span className="mt-1 block text-xs text-slate-500">用于存放书签数据的数据库名称。</span>
+                      </span>
+                      <input
+                        className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#138052] focus:ring-2 focus:ring-[#138052]/15"
+                        onChange={(event) => updateConfig('database', event.target.value)}
+                        placeholder="bookmark_atlas"
+                        type="text"
+                        value={config.database}
+                      />
+                    </label>
 
-                <label className="form-control">
-                  <span className="label-text mb-1">同步间隔（分钟）</span>
-                  <input
-                    className="input input-bordered w-full"
-                    min={1}
-                    onChange={(event) => updateConfig('syncIntervalMin', Number(event.target.value) || 1)}
-                    type="number"
-                    value={config.syncIntervalMin}
-                  />
-                </label>
+                    {/* 用户名行：左侧标签与说明，右侧输入框。 */}
+                    <label className="flex flex-col gap-2 rounded-[10px] border border-slate-200 bg-white p-3 md:flex-row md:items-center md:gap-4">
+                      <span className="shrink-0 md:w-64">
+                        <span className="block text-sm font-medium text-slate-700">Username</span>
+                        <span className="mt-1 block text-xs text-slate-500">同步账号用户名，留空表示不使用账号认证。</span>
+                      </span>
+                      <input
+                        autoComplete="username"
+                        className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#138052] focus:ring-2 focus:ring-[#138052]/15"
+                        onChange={(event) => updateConfig('username', event.target.value)}
+                        type="text"
+                        value={config.username}
+                      />
+                    </label>
 
-                <label className="form-control">
-                  <span className="label-text mb-1">Username</span>
-                  <input
-                    autoComplete="username"
-                    className="input input-bordered w-full"
-                    onChange={(event) => updateConfig('username', event.target.value)}
-                    type="text"
-                    value={config.username}
-                  />
-                </label>
+                    {/* 密码行：左侧标签与说明，右侧输入框。 */}
+                    <label className="flex flex-col gap-2 rounded-[10px] border border-slate-200 bg-white p-3 md:flex-row md:items-center md:gap-4">
+                      <span className="shrink-0 md:w-64">
+                        <span className="block text-sm font-medium text-slate-700">Password</span>
+                        <span className="mt-1 block text-xs text-slate-500">同步账号密码，仅在本地保存并用于连接时认证。</span>
+                      </span>
+                      <input
+                        autoComplete="current-password"
+                        className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#138052] focus:ring-2 focus:ring-[#138052]/15"
+                        onChange={(event) => updateConfig('password', event.target.value)}
+                        type="password"
+                        value={config.password}
+                      />
+                    </label>
+                  </div>
+                </section>
 
-                <label className="form-control">
-                  <span className="label-text mb-1">Password</span>
-                  <input
-                    autoComplete="current-password"
-                    className="input input-bordered w-full"
-                    onChange={(event) => updateConfig('password', event.target.value)}
-                    type="password"
-                    value={config.password}
-                  />
-                </label>
+                {/* 同步策略卡片：控制同步频率、方向与冲突处理。 */}
+                <section className="rounded-[12px] border border-slate-200 bg-[#EFF3F7]/45 p-4">
+                  <h3 className="text-base font-semibold text-slate-800">同步策略</h3>
+                  <p className="mt-1 text-sm text-slate-500">根据网络和协作场景设置同步节奏与数据冲突处理方式。</p>
+                  <div className="mt-4 space-y-3">
+                    {/* 同步间隔行：左侧标签与说明，右侧输入框。 */}
+                    <label className="flex flex-col gap-2 rounded-[10px] border border-slate-200 bg-white p-3 md:flex-row md:items-center md:gap-4">
+                      <span className="shrink-0 md:w-64">
+                        <span className="block text-sm font-medium text-slate-700">同步间隔（分钟）</span>
+                        <span className="mt-1 block text-xs text-slate-500">最小 1 分钟；数值越小，数据越实时但请求更频繁。</span>
+                      </span>
+                      <input
+                        className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#138052] focus:ring-2 focus:ring-[#138052]/15"
+                        min={1}
+                        onChange={(event) => updateConfig('syncIntervalMin', Number(event.target.value) || 1)}
+                        type="number"
+                        value={config.syncIntervalMin}
+                      />
+                    </label>
 
-                <label className="form-control">
-                  <span className="label-text mb-1">同步模式</span>
-                  <select
-                    className="select select-bordered w-full"
-                    onChange={(event) => updateConfig('syncMode', event.target.value as SyncConfig['syncMode'])}
-                    value={config.syncMode}
-                  >
-                    <option value="two-way">two-way</option>
-                    <option value="push-only">push-only</option>
-                    <option value="pull-only">pull-only</option>
-                  </select>
-                </label>
+                    {/* 同步模式行：左侧标签与说明，右侧下拉框。 */}
+                    <label className="flex flex-col gap-2 rounded-[10px] border border-slate-200 bg-white p-3 md:flex-row md:items-center md:gap-4">
+                      <span className="shrink-0 md:w-64">
+                        <span className="block text-sm font-medium text-slate-700">同步模式</span>
+                        <span className="mt-1 block text-xs text-slate-500">`two-way` 双向，`push-only` 仅上传，`pull-only` 仅下载。</span>
+                      </span>
+                      <select
+                        className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#138052] focus:ring-2 focus:ring-[#138052]/15"
+                        onChange={(event) => updateConfig('syncMode', event.target.value as SyncConfig['syncMode'])}
+                        value={config.syncMode}
+                      >
+                        <option value="two-way">two-way</option>
+                        <option value="push-only">push-only</option>
+                        <option value="pull-only">pull-only</option>
+                      </select>
+                    </label>
 
-                <label className="form-control">
-                  <span className="label-text mb-1">冲突策略</span>
-                  <select
-                    className="select select-bordered w-full"
-                    onChange={(event) =>
-                      updateConfig('conflictPolicy', event.target.value as SyncConfig['conflictPolicy'])
-                    }
-                    value={config.conflictPolicy}
-                  >
-                    <option value="latest-write-wins">latest-write-wins</option>
-                    <option value="prefer-local">prefer-local</option>
-                    <option value="prefer-remote">prefer-remote</option>
-                  </select>
-                </label>
-              </div>
+                    {/* 冲突策略行：左侧标签与说明，右侧下拉框。 */}
+                    <label className="flex flex-col gap-2 rounded-[10px] border border-slate-200 bg-white p-3 md:flex-row md:items-center md:gap-4">
+                      <span className="shrink-0 md:w-64">
+                        <span className="block text-sm font-medium text-slate-700">冲突策略</span>
+                        <span className="mt-1 block text-xs text-slate-500">推荐 `latest-write-wins`，也可强制本地或远端优先。</span>
+                      </span>
+                      <select
+                        className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#138052] focus:ring-2 focus:ring-[#138052]/15"
+                        onChange={(event) =>
+                          updateConfig('conflictPolicy', event.target.value as SyncConfig['conflictPolicy'])
+                        }
+                        value={config.conflictPolicy}
+                      >
+                        <option value="latest-write-wins">latest-write-wins</option>
+                        <option value="prefer-local">prefer-local</option>
+                        <option value="prefer-remote">prefer-remote</option>
+                      </select>
+                    </label>
+                  </div>
+                </section>
 
-              {/* 同步行为开关：影响自动同步与 HTTPS 证书校验 */}
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <label className="label cursor-pointer justify-start gap-3 rounded-box border border-base-300 px-3 py-2">
-                  <input
-                    checked={config.autoSyncOnChange}
-                    className="checkbox checkbox-primary"
-                    onChange={(event) => updateConfig('autoSyncOnChange', event.target.checked)}
-                    type="checkbox"
-                  />
-                  <span className="label-text">书签变更后自动同步</span>
-                </label>
+                {/* 安全与自动化卡片：控制同步触发时机与连接安全校验。 */}
+                <section className="rounded-[12px] border border-slate-200 bg-[#EFF3F7]/45 p-4">
+                  <h3 className="text-base font-semibold text-slate-800">安全与自动化</h3>
+                  <p className="mt-1 text-sm text-slate-500">建议在生产环境开启 HTTPS 校验，并按需开启自动同步。</p>
+                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {/* 自动同步：本地书签变化后自动触发一次增量同步。 */}
+                    <label className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-slate-200 bg-white px-3 py-3">
+                      <input
+                        checked={config.autoSyncOnChange}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#138052] focus:ring-[#138052]/30"
+                        onChange={(event) => updateConfig('autoSyncOnChange', event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-slate-700">书签变更后自动同步</span>
+                        <span className="mt-1 block text-xs text-slate-500">开启后在新增、删除、移动书签后自动调度同步。</span>
+                      </span>
+                    </label>
 
-                <label className="label cursor-pointer justify-start gap-3 rounded-box border border-base-300 px-3 py-2">
-                  <input
-                    checked={config.verifySSL}
-                    className="checkbox checkbox-primary"
-                    onChange={(event) => updateConfig('verifySSL', event.target.checked)}
-                    type="checkbox"
-                  />
-                  <span className="label-text">验证 HTTPS 证书</span>
-                </label>
+                    {/* SSL 校验：控制是否校验证书合法性，保障传输安全。 */}
+                    <label className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-slate-200 bg-white px-3 py-3">
+                      <input
+                        checked={config.verifySSL}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#138052] focus:ring-[#138052]/30"
+                        onChange={(event) => updateConfig('verifySSL', event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-slate-700">验证 HTTPS 证书</span>
+                        <span className="mt-1 block text-xs text-slate-500">关闭仅用于自签证书测试环境，正式环境请保持开启。</span>
+                      </span>
+                    </label>
+                  </div>
+                </section>
               </div>
             </section>
-          ) : (
+          ) : activeTab === 'shortcuts' ? (
             <section>
               {/* 快捷键区：展示当前生效值，并引导到浏览器原生页面进行修改 */}
               <div className="mb-3 flex items-center justify-between gap-2">
@@ -410,6 +481,48 @@ export const OptionsApp = () => {
                     ) : null}
                   </tbody>
                 </table>
+              </div>
+            </section>
+          ) : (
+            <section>
+              {/* 关于页头图：突出产品品牌信息与定位说明。 */}
+              <header className="mb-4 rounded-[14px] border border-[#138052]/20 bg-gradient-to-br from-[#138052]/10 via-white to-[#EFF3F7] p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#138052]">About</p>
+                <h2 className="mt-2 text-2xl font-semibold text-slate-800">{productName}</h2>
+                <p className="mt-2 text-sm text-slate-600">本扩展用于高效管理书签并提供快速检索与同步能力。</p>
+              </header>
+
+              {/* 关于信息卡：展示产品名、版本、作者与开源地址。 */}
+              <div className="rounded-[14px] border border-slate-200 bg-[#EFF3F7]/45 p-4">
+                <div className="space-y-3 rounded-[12px] border border-slate-200 bg-white p-4">
+                  {/* 产品名信息行：展示当前扩展名称。 */}
+                  <div className="flex flex-col gap-1 border-b border-slate-100 pb-3 md:flex-row md:items-center md:justify-between">
+                    <span className="text-sm font-medium text-slate-500">产品信息名</span>
+                    <span className="text-sm font-semibold text-slate-800">{productName}</span>
+                  </div>
+                  {/* 版本号信息行：展示当前运行版本。 */}
+                  <div className="flex flex-col gap-1 border-b border-slate-100 pb-3 md:flex-row md:items-center md:justify-between">
+                    <span className="text-sm font-medium text-slate-500">版本号</span>
+                    <span className="text-sm font-semibold text-slate-800">v{productVersion}</span>
+                  </div>
+                  {/* 作者信息行：展示作者署名。 */}
+                  <div className="flex flex-col gap-1 border-b border-slate-100 pb-3 md:flex-row md:items-center md:justify-between">
+                    <span className="text-sm font-medium text-slate-500">作者</span>
+                    <span className="text-sm font-semibold text-slate-800">李炎</span>
+                  </div>
+                  {/* GitHub 信息行：提供项目仓库链接。 */}
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <span className="text-sm font-medium text-slate-500">GitHub</span>
+                    <a
+                      className="text-sm font-medium text-[#138052] underline decoration-[#138052]/40 underline-offset-4 transition hover:text-[#106b45]"
+                      href="https://github.com/hi-liyan/bookmark-atlas-extension"
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      https://github.com/hi-liyan/bookmark-atlas-extension
+                    </a>
+                  </div>
+                </div>
               </div>
             </section>
           )}
