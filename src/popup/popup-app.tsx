@@ -787,7 +787,7 @@ export const PopupApp = () => {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-emerald-50 to-cyan-50 p-4 text-slate-800">
+    <div className="flex h-full flex-col overflow-hidden bg-[#EFF3F7] p-4 text-slate-800">
       {/* 顶部信息与操作区：左侧产品信息，右侧设置与刷新按钮。 */}
       <div className="mb-2 flex items-start justify-between gap-3 px-1">
         <div>
@@ -816,9 +816,9 @@ export const PopupApp = () => {
         </div>
       </div>
       {/* 搜索卡片区：仅保留搜索输入。 */}
-      <header className="mb-3 rounded-2xl border border-white/60 bg-white/80 p-3 shadow-sm backdrop-blur">
+      <header className="mb-3 rounded-[15px] bg-white p-3 shadow-sm backdrop-blur">
         {/* 搜索框：全局匹配标题和 URL。 */}
-        <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <label className="flex items-center gap-2 rounded-[10px] bg-[#EFF3F7] px-3 py-2">
           <span className="text-slate-400">⌕</span>
           <input
             className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
@@ -846,7 +846,7 @@ export const PopupApp = () => {
       {error ? <div className="mb-3 rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-800">{error}</div> : null}
 
       {/* 单窗口树区域：目录后直接展示其书签。 */}
-      <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-white/60 bg-white/90 p-3 shadow-sm">
+      <section className="flex min-h-0 flex-1 flex-col rounded-[15px] bg-white p-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">{hasSearchQuery ? '搜索结果' : '目录树'}</h2>
           {!hasSearchQuery ? (
@@ -1140,7 +1140,7 @@ export const PopupApp = () => {
 
       {editingDraft ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="w-full max-w-md rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="mb-3 text-base font-semibold text-slate-800">编辑书签</h3>
             <label className="mb-2 block text-xs font-medium text-slate-600">标题</label>
             <input
@@ -1167,7 +1167,7 @@ export const PopupApp = () => {
 
       {createFolderDraft ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="w-full max-w-md rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="mb-3 text-base font-semibold text-slate-800">新建文件夹</h3>
             <label className="mb-2 block text-xs font-medium text-slate-600">文件夹名称</label>
             <input
@@ -1188,7 +1188,7 @@ export const PopupApp = () => {
 
       {renameFolderDraft ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="w-full max-w-md rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
             {/* \u91cd\u547d\u540d\u5f39\u7a97\uff1a\u7528\u4e8e\u4fee\u6539\u76ee\u5f55\u540d\u79f0\uff0c\u907f\u514d\u8bef\u89e6\u5220\u9664\u3002 */}
             <h3 className="mb-3 text-base font-semibold text-slate-800">重命名文件夹</h3>
             <label className="mb-2 block text-xs font-medium text-slate-600">文件夹名称</label>
@@ -1210,7 +1210,7 @@ export const PopupApp = () => {
 
       {createBookmarkDraft ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="w-full max-w-md rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="mb-3 text-base font-semibold text-slate-800">新建书签</h3>
             <label className="mb-2 block text-xs font-medium text-slate-600">标题</label>
             <input
@@ -1238,7 +1238,7 @@ export const PopupApp = () => {
 
       {deletingItem ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="w-full max-w-sm rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="mb-2 text-base font-semibold text-slate-800">删除书签</h3>
             <p className="mb-4 text-sm text-slate-600">确认删除“{deletingItem.title || '未命名书签'}”？该操作不可撤销。</p>
             <div className="flex justify-end gap-2">
@@ -1251,7 +1251,7 @@ export const PopupApp = () => {
 
       {deleteFolderDraft ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="w-full max-w-sm rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="mb-2 text-base font-semibold text-slate-800">删除文件夹</h3>
             <p className="mb-4 text-sm text-slate-600">确认删除“{deleteFolderDraft.title}”及其所有子目录和书签？该操作不可撤销。</p>
             <div className="flex justify-end gap-2">

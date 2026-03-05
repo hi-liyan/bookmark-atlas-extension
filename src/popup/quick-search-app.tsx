@@ -270,12 +270,12 @@ export const QuickSearchApp = () => {
   };
 
   return (
-    <div className="flex h-full w-full flex-col bg-gradient-to-br from-amber-50 via-lime-50 to-cyan-50 p-2 text-slate-800 sm:p-4">
+    <div className="flex h-full w-full flex-col bg-[#EFF3F7] p-2 text-slate-800 sm:p-4">
       {/* 主容器区域：根据窗口大小自适应，避免缩小时内容挤压裁切 */}
       <div className="flex min-h-0 flex-1 flex-col">
         {/* 顶部输入区：模拟 Spotlight 的聚焦搜索入口 */}
-        <header className="mb-2 rounded-2xl border border-white/70 bg-white/90 p-2 shadow-sm sm:mb-3 sm:p-3">
-          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+        <header className="mb-2 rounded-[15px] bg-white p-2 shadow-sm sm:mb-3 sm:p-3">
+          <label className="flex items-center gap-2 rounded-[10px] bg-[#EFF3F7] px-3 py-2">
             <span className="text-slate-400">⌕</span>
             <input
               ref={inputRef}
@@ -324,7 +324,7 @@ export const QuickSearchApp = () => {
         </header>
 
         {/* 列表区域：展示搜索候选项并支持鼠标点击打开 */}
-        <section className="min-h-0 flex-1 rounded-2xl border border-white/70 bg-white/90 p-1.5 shadow-sm sm:p-2">
+        <section className="min-h-0 flex-1 rounded-[15px] bg-white p-1.5 shadow-sm sm:p-2">
           {loading ? <div className="px-3 py-4 text-sm text-cyan-700">正在加载书签索引...</div> : null}
           {error ? <div className="px-3 py-4 text-sm text-rose-700">{error}</div> : null}
           {actionError ? <div className="px-3 py-2 text-sm text-rose-700">{actionError}</div> : null}
@@ -414,7 +414,7 @@ export const QuickSearchApp = () => {
       {editingDraft ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
           {/* 标签编辑弹窗：支持直接修改标题与 URL */}
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="w-full max-w-md rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="mb-3 text-base font-semibold text-slate-800">编辑标签</h3>
             <label className="mb-2 block text-xs font-medium text-slate-600">标签标题</label>
             <input
@@ -471,7 +471,7 @@ export const QuickSearchApp = () => {
       {deletingItem ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
           {/* 标签删除确认弹窗：满足二次确认后才执行删除 */}
-          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div className="w-full max-w-sm rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="mb-2 text-base font-semibold text-slate-800">删除标签</h3>
             <p className="mb-4 text-sm text-slate-600">
               确认删除“{deletingItem.title || '未命名书签'}”？该操作不可撤销。
