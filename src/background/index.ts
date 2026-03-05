@@ -1,17 +1,21 @@
 import { browser } from '../shared/browser';
 import { buildBookmarkIndex } from '../shared/bookmark-index';
 import { bookmarkService } from '../shared/bookmark-service';
-import type { BookmarkIndexSnapshot, RuntimeRequest, RuntimeResponse } from '../shared/types';
+import type { BookmarkIndexSnapshot, RuntimeRequest, RuntimeResponse, SyncConfig } from '../shared/types';
+import { getSyncStatus, runSyncNow } from '../sync/engine';
 import { createSingleFlightController } from './single-flight';
 
 const INDEX_STORAGE_KEY = 'bookmark-index-snapshot';
+const SYNC_CONFIG_STORAGE_KEY = 'sync-config';
 const QUICK_SEARCH_COMMAND = 'open-quick-search';
 const QUICK_SEARCH_PAGE = 'quick-search.html';
 const QUICK_SEARCH_WINDOW_WIDTH = 760;
 const QUICK_SEARCH_WINDOW_HEIGHT = 520;
+const AUTO_SYNC_DEBOUNCE_MS = 1200;
 
 let cachedIndex: BookmarkIndexSnapshot | null = null;
 let quickSearchWindowId: number | null = null;
+let autoSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * 重建书签索引并写入缓存与本地存储。
@@ -70,6 +74,45 @@ const scheduleRebuild = (): void => {
 };
 
 /**
+ * 从本地配置中读取同步开关与自动同步开关，用于书签事件后的后台调度。
+ * 入参：无。
+ * 出参：同步配置或 null。
+ */
+const getSyncConfig = async (): Promise<SyncConfig | null> => {
+  const stored = await browser.storage.local.get(SYNC_CONFIG_STORAGE_KEY);
+  const config = stored[SYNC_CONFIG_STORAGE_KEY] as SyncConfig | undefined;
+  return config ?? null;
+};
+
+const runSyncController = createSingleFlightController(async () => runSyncNow());
+
+/**
+ * 在书签变更后调度一次自动同步（防抖），避免短时间高频事件触发多轮请求。
+ * 入参：无。
+ * 出参：void。
+ */
+const scheduleAutoSync = (): void => {
+  if (autoSyncTimer !== null) {
+    clearTimeout(autoSyncTimer);
+  }
+
+  autoSyncTimer = setTimeout(() => {
+    void (async () => {
+      const config = await getSyncConfig();
+      if (!config || !config.syncEnabled || !config.autoSyncOnChange) {
+        return;
+      }
+
+      try {
+        await runSyncController.run();
+      } catch {
+        // 自动同步失败不阻断用户操作；失败信息会写入 sync status 供设置页展示。
+      }
+    })();
+  }, AUTO_SYNC_DEBOUNCE_MS);
+};
+
+/**
  * 计算快捷搜索窗口的居中位置，优先相对最近聚焦浏览器窗口居中。
  * 入参：无。
  * 出参：可用于 windows.create 的 left/top 坐标。
@@ -121,10 +164,22 @@ const openQuickSearchWindow = async (): Promise<void> => {
   quickSearchWindowId = created.id ?? null;
 };
 
-browser.bookmarks.onCreated.addListener(scheduleRebuild);
-browser.bookmarks.onRemoved.addListener(scheduleRebuild);
-browser.bookmarks.onChanged.addListener(scheduleRebuild);
-browser.bookmarks.onMoved.addListener(scheduleRebuild);
+browser.bookmarks.onCreated.addListener(() => {
+  scheduleRebuild();
+  scheduleAutoSync();
+});
+browser.bookmarks.onRemoved.addListener(() => {
+  scheduleRebuild();
+  scheduleAutoSync();
+});
+browser.bookmarks.onChanged.addListener(() => {
+  scheduleRebuild();
+  scheduleAutoSync();
+});
+browser.bookmarks.onMoved.addListener(() => {
+  scheduleRebuild();
+  scheduleAutoSync();
+});
 
 browser.windows.onRemoved.addListener((windowId: number) => {
   if (quickSearchWindowId === windowId) {
@@ -223,6 +278,17 @@ browser.runtime.onMessage.addListener(async (request: RuntimeRequest): Promise<R
       await bookmarkService.remove(request.bookmarkId);
       await rebuildIndexFresh();
       return { ok: true, deletedId: request.bookmarkId };
+    }
+
+    if (request.type === 'sync/get-status') {
+      const syncStatus = await getSyncStatus();
+      return { ok: true, syncStatus };
+    }
+
+    if (request.type === 'sync/run-now') {
+      const syncResult = request.config ? await runSyncNow(request.config) : await runSyncController.runFresh();
+      await rebuildIndexFresh();
+      return { ok: true, syncResult };
     }
 
     return { ok: false, error: 'Unsupported request type.' };

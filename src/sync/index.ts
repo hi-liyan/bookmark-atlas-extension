@@ -5,6 +5,17 @@ export interface SyncConnectionTestResult {
   message: string;
 }
 
+const COUCH_DB_NAME_PATTERN = /^[a-z][a-z0-9_$()+/-]*$/;
+
+/**
+ * 校验数据库名称是否符合 CouchDB 命名约束。
+ * 入参：数据库名（未 trim）。
+ * 出参：是否合法。
+ */
+export const isValidCouchDatabaseName = (database: string): boolean => {
+  return COUCH_DB_NAME_PATTERN.test(database.trim());
+};
+
 /**
  * 校验“测试连接”所需最小配置，只关注服务地址与认证信息。
  * 入参：同步配置对象。
@@ -43,6 +54,9 @@ export const validateSyncConfigCompleteness = (config: SyncConfig): string[] => 
 
   if (!normalizedDatabase) {
     issues.push('请填写数据库名称。');
+  } else if (!isValidCouchDatabaseName(normalizedDatabase)) {
+    // CouchDB 数据库名要求：小写字母开头，仅允许小写字母、数字与部分符号。
+    issues.push('数据库名称不符合 CouchDB 规则：需以小写字母开头，仅允许小写字母、数字和 _$()+/-。');
   }
 
   return issues;

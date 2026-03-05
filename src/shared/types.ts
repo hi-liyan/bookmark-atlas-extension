@@ -28,6 +28,35 @@ export interface BookmarkIndexSnapshot {
   items: BookmarkIndexItem[];
 }
 
+export interface SyncRemoteSnapshot {
+  updatedAt: number;
+  tree: BookmarkNode[];
+}
+
+export interface SyncStatus {
+  running: boolean;
+  lastSyncAt: number | null;
+  lastSuccessAt: number | null;
+  lastError: string;
+  lastSyncSeq: string;
+  lastMode: SyncMode | null;
+  lastLocalSnapshotAt: number;
+  pushedCount: number;
+  pulledCount: number;
+  retryCount: number;
+}
+
+export interface SyncExecutionResult {
+  startedAt: number;
+  finishedAt: number;
+  mode: SyncMode;
+  pushedCount: number;
+  pulledCount: number;
+  retryCount: number;
+  lastSyncSeq: string;
+  message: string;
+}
+
 export type RuntimeRequest =
   | { type: 'bookmarks/get-tree' }
   | { type: 'bookmarks/get-index' }
@@ -39,7 +68,9 @@ export type RuntimeRequest =
   | { type: 'bookmarks/delete-folder'; folderId: string }
   | { type: 'bookmarks/rename-folder'; folderId: string; title: string }
   | { type: 'bookmarks/update'; bookmarkId: string; title: string; url: string }
-  | { type: 'bookmarks/delete'; bookmarkId: string };
+  | { type: 'bookmarks/delete'; bookmarkId: string }
+  | { type: 'sync/get-status' }
+  | { type: 'sync/run-now'; config?: SyncConfig };
 
 export type RuntimeResponse =
   | { ok: true; tree: BookmarkNode[] }
@@ -52,6 +83,8 @@ export type RuntimeResponse =
   | { ok: true; renamedFolderId: string }
   | { ok: true; updatedId: string }
   | { ok: true; deletedId: string }
+  | { ok: true; syncStatus: SyncStatus }
+  | { ok: true; syncResult: SyncExecutionResult }
   | { ok: false; error: string };
 
 export type SyncMode = 'two-way' | 'push-only' | 'pull-only';

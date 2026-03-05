@@ -1,6 +1,6 @@
 import { type Dispatch, type SetStateAction, useEffect, useState } from 'react';
 import { browser } from '../shared/browser';
-import type { SyncConfig } from '../shared/types';
+import type { RuntimeResponse, SyncConfig, SyncStatus } from '../shared/types';
 import { testCouchDbConnection, validateConnectionConfig, validateSyncConfigCompleteness } from '../sync';
 
 const STORAGE_KEY = 'sync-config';
@@ -16,6 +16,19 @@ const defaultConfig: SyncConfig = {
   conflictPolicy: 'latest-write-wins',
   autoSyncOnChange: true,
   verifySSL: true
+};
+
+const defaultSyncStatus: SyncStatus = {
+  running: false,
+  lastSyncAt: null,
+  lastSuccessAt: null,
+  lastError: '',
+  lastSyncSeq: '0',
+  lastMode: null,
+  lastLocalSnapshotAt: 0,
+  pushedCount: 0,
+  pulledCount: 0,
+  retryCount: 0
 };
 
 interface ShortcutCommandView {
@@ -34,6 +47,19 @@ interface ShortcutSettingsNavigationResult {
 }
 
 type SyncConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
+
+/**
+ * 将时间戳格式化为便于阅读的本地时间文本。
+ * 入参：时间戳（毫秒）或 null。
+ * 出参：格式化文本。
+ */
+const formatTime = (timestamp: number | null): string => {
+  if (!timestamp) {
+    return '暂无';
+  }
+
+  return new Date(timestamp).toLocaleString();
+};
 
 /**
  * 将命令名转换为更易懂的中文显示，便于用户识别功能用途。
@@ -120,6 +146,12 @@ export const OptionsApp = () => {
   const [syncConnectionStatus, setSyncConnectionStatus] = useState<SyncConnectionStatus>('idle');
   // 连接测试信息：展示“测试连接”或启用流程中的连通性结果。
   const [syncConnectionMessage, setSyncConnectionMessage] = useState('');
+  // 同步状态快照：展示最近同步时间、序列号与错误信息。
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(defaultSyncStatus);
+  // 立即同步执行状态：避免重复点击并反馈处理中状态。
+  const [syncRunning, setSyncRunning] = useState(false);
+  // 立即同步消息：展示本次执行结果（成功/失败）。
+  const [syncRunMessage, setSyncRunMessage] = useState('');
   const updateConfig = createConfigUpdater(setConfig);
 
   useEffect(() => {
@@ -153,6 +185,42 @@ export const OptionsApp = () => {
   }, []);
 
   /**
+   * 从 background 拉取最新同步状态，用于刷新状态面板。
+   * 入参：无。
+   * 出参：Promise<void>。
+   */
+  const loadSyncStatus = async (): Promise<void> => {
+    const response = (await browser.runtime.sendMessage({ type: 'sync/get-status' })) as RuntimeResponse;
+    if (response.ok && 'syncStatus' in response) {
+      setSyncStatus(response.syncStatus);
+      return;
+    }
+
+    if (!response.ok) {
+      setSyncRunMessage(`读取同步状态失败：${response.error}`);
+    }
+  };
+
+  useEffect(() => {
+    void loadSyncStatus();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'sync') {
+      return;
+    }
+
+    // 同步状态轮询：同步过程中定期拉取后台状态，保证“同步中/完成”展示及时刷新。
+    const timer = setInterval(() => {
+      void loadSyncStatus();
+    }, 3000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [activeTab]);
+
+  /**
    * 保存同步配置到本地存储。
    * 入参：无。
    * 出参：Promise<void>。
@@ -161,6 +229,55 @@ export const OptionsApp = () => {
     await browser.storage.local.set({ [STORAGE_KEY]: config });
     setSavedMessage('设置已保存');
     setTimeout(() => setSavedMessage(''), 1500);
+  };
+
+  /**
+   * 手动执行立即同步：使用当前表单配置触发 background 同步引擎。
+   * 入参：无。
+   * 出参：Promise<void>。
+   */
+  const runSyncNow = async (): Promise<void> => {
+    const issues = validateSyncConfigCompleteness(config);
+    if (issues.length > 0) {
+      setSyncValidationError(issues[0]);
+      return;
+    }
+
+    if (!config.syncEnabled) {
+      setSyncValidationError('请先启用同步开关后再执行立即同步。');
+      return;
+    }
+
+    setSyncValidationError('');
+    setSyncRunning(true);
+    setSyncRunMessage('正在执行同步...');
+
+    try {
+      // 立即同步使用当前页面草稿配置，避免用户忘记点“保存设置”导致参数不一致。
+      const response = (await browser.runtime.sendMessage({
+        type: 'sync/run-now',
+        config
+      })) as RuntimeResponse;
+
+      if (!response.ok) {
+        throw new Error(response.error);
+      }
+
+      if (!('syncResult' in response)) {
+        throw new Error('同步响应格式错误。');
+      }
+
+      setSyncRunMessage(
+        `同步完成：模式 ${response.syncResult.mode}，推送 ${response.syncResult.pushedCount}，拉取 ${response.syncResult.pulledCount}，重试 ${response.syncResult.retryCount}。`
+      );
+      await loadSyncStatus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '立即同步失败';
+      setSyncRunMessage(`同步失败：${message}`);
+      await loadSyncStatus();
+    } finally {
+      setSyncRunning(false);
+    }
   };
 
   /**
@@ -330,6 +447,59 @@ export const OptionsApp = () => {
                 </label>
               </div>
               {syncValidationError ? <div className="alert alert-error mb-3 text-sm">{syncValidationError}</div> : null}
+              {syncRunMessage ? <div className="alert alert-info mb-3 text-sm">{syncRunMessage}</div> : null}
+
+              {/* 同步执行卡片：提供立即同步入口与最近状态回显。 */}
+              <section className="mb-4 rounded-[12px] border border-slate-200 bg-[#EFF3F7]/45 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-800">同步执行</h3>
+                    <p className="mt-1 text-sm text-slate-500">支持 `two-way / push-only / pull-only`，按当前策略执行增量同步。</p>
+                  </div>
+                  {/* 立即同步按钮：触发后台同步引擎并更新状态面板。 */}
+                  <button
+                    className="rounded-lg bg-[#138052] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#106b45] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={syncRunning || syncStatus.running}
+                    onClick={() => {
+                      void runSyncNow();
+                    }}
+                    type="button"
+                  >
+                    {syncRunning || syncStatus.running ? '同步中...' : '立即同步'}
+                  </button>
+                </div>
+
+                {/* 同步状态信息：展示最近执行时间、模式、序列号、推拉计数与失败原因。 */}
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <span className="text-slate-500">最近同步时间：</span>
+                    <span className="font-medium text-slate-800">{formatTime(syncStatus.lastSyncAt)}</span>
+                  </div>
+                  <div className="rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <span className="text-slate-500">最近成功时间：</span>
+                    <span className="font-medium text-slate-800">{formatTime(syncStatus.lastSuccessAt)}</span>
+                  </div>
+                  <div className="rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <span className="text-slate-500">最近模式：</span>
+                    <span className="font-medium text-slate-800">{syncStatus.lastMode || '暂无'}</span>
+                  </div>
+                  <div className="rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <span className="text-slate-500">lastSyncSeq：</span>
+                    <span className="font-mono text-slate-800">{syncStatus.lastSyncSeq || '0'}</span>
+                  </div>
+                  <div className="rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <span className="text-slate-500">推送/拉取：</span>
+                    <span className="font-medium text-slate-800">
+                      {syncStatus.pushedCount}/{syncStatus.pulledCount}
+                    </span>
+                  </div>
+                  <div className="rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <span className="text-slate-500">重试次数：</span>
+                    <span className="font-medium text-slate-800">{syncStatus.retryCount}</span>
+                  </div>
+                </div>
+                {syncStatus.lastError ? <div className="mt-3 text-sm text-[#b42318]">最近错误：{syncStatus.lastError}</div> : null}
+              </section>
 
               <div className="space-y-4">
                 {/* 连接信息卡片：配置同步服务地址与认证信息。 */}

@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SyncConfig } from '../shared/types';
-import { testCouchDbConnection, validateConnectionConfig, validateSyncConfig, validateSyncConfigCompleteness } from './index';
+import {
+  isValidCouchDatabaseName,
+  testCouchDbConnection,
+  validateConnectionConfig,
+  validateSyncConfig,
+  validateSyncConfigCompleteness
+} from './index';
 
 const baseConfig: SyncConfig = {
   syncEnabled: true,
@@ -48,6 +54,17 @@ describe('validateConnectionConfig', () => {
     });
 
     expect(issues).toHaveLength(0);
+  });
+});
+
+// 数据库名规则测试：确保无效名称在启用同步前被提前拦截。
+describe('isValidCouchDatabaseName', () => {
+  it('should return false for uppercase database name', () => {
+    expect(isValidCouchDatabaseName('Bookmark_Atlas')).toBe(false);
+  });
+
+  it('should return true for legal database name', () => {
+    expect(isValidCouchDatabaseName('bookmark_atlas')).toBe(true);
   });
 });
 
