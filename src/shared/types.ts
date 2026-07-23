@@ -69,6 +69,12 @@ export type RuntimeRequest =
   | { type: 'bookmarks/rename-folder'; folderId: string; title: string }
   | { type: 'bookmarks/update'; bookmarkId: string; title: string; url: string }
   | { type: 'bookmarks/delete'; bookmarkId: string }
+  | {
+      type: 'quick-search/open-bookmark';
+      url: string;
+      openInNewTab: boolean;
+      keepQuickSearchWindowInForeground: boolean;
+    }
   | { type: 'sync/get-status' }
   | { type: 'sync/run-now'; config?: SyncConfig };
 
@@ -83,6 +89,7 @@ export type RuntimeResponse =
   | { ok: true; renamedFolderId: string }
   | { ok: true; updatedId: string }
   | { ok: true; deletedId: string }
+  | { ok: true; openedInNewTabUrl: string }
   | { ok: true; syncStatus: SyncStatus }
   | { ok: true; syncResult: SyncExecutionResult }
   | { ok: false; error: string };
@@ -101,4 +108,10 @@ export interface SyncConfig {
   conflictPolicy: ConflictPolicy;
   autoSyncOnChange: boolean;
   verifySSL: boolean;
+}
+
+export interface QuickSearchConfig {
+  openBookmarkInNewTab: boolean;
+  closeWindowAfterBookmarkClick: boolean;
+  closeWindowAfterContextMenuOpen: boolean;
 }

@@ -15,6 +15,8 @@ const AUTO_SYNC_DEBOUNCE_MS = 1200;
 
 let cachedIndex: BookmarkIndexSnapshot | null = null;
 let quickSearchWindowId: number | null = null;
+let quickSearchSourceWindowId: number | null = null;
+let quickSearchSourceTabId: number | null = null;
 let autoSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
@@ -115,9 +117,13 @@ const scheduleAutoSync = (): void => {
 /**
  * 计算快捷搜索窗口的居中位置，优先相对最近聚焦浏览器窗口居中。
  * 入参：无。
- * 出参：可用于 windows.create 的 left/top 坐标。
+ * 出参：可用于 windows.create 的 left/top 坐标及触发快捷键的浏览器窗口 ID。
  */
-const getCenteredQuickSearchPosition = async (): Promise<{ left: number; top: number }> => {
+const getCenteredQuickSearchPosition = async (): Promise<{
+  left: number;
+  top: number;
+  sourceWindowId: number | null;
+}> => {
   try {
     const focusedWindow = await browser.windows.getLastFocused();
     const baseLeft = focusedWindow.left ?? 0;
@@ -128,9 +134,27 @@ const getCenteredQuickSearchPosition = async (): Promise<{ left: number; top: nu
     // 使用最近窗口尺寸计算中心点，确保弹窗不会跑到屏幕负坐标。
     const left = Math.max(0, Math.round(baseLeft + (baseWidth - QUICK_SEARCH_WINDOW_WIDTH) / 2));
     const top = Math.max(0, Math.round(baseTop + (baseHeight - QUICK_SEARCH_WINDOW_HEIGHT) / 2));
-    return { left, top };
+    return { left, top, sourceWindowId: focusedWindow.id ?? null };
   } catch {
-    return { left: 120, top: 120 };
+    return { left: 120, top: 120, sourceWindowId: null };
+  }
+};
+
+/**
+ * 获取指定浏览器窗口的当前激活标签，用于“非新标签打开”时复用原标签。
+ * 入参：浏览器窗口 ID 或 null。
+ * 出参：激活标签 ID 或 null。
+ */
+const getActiveTabId = async (windowId: number | null): Promise<number | null> => {
+  if (windowId === null) {
+    return null;
+  }
+
+  try {
+    const [activeTab] = await browser.tabs.query({ windowId, active: true });
+    return activeTab?.id ?? null;
+  } catch {
+    return null;
   }
 };
 
@@ -150,7 +174,7 @@ const openQuickSearchWindow = async (): Promise<void> => {
     }
   }
 
-  const { left, top } = await getCenteredQuickSearchPosition();
+  const { left, top, sourceWindowId } = await getCenteredQuickSearchPosition();
   const created = await browser.windows.create({
     url: browser.runtime.getURL(QUICK_SEARCH_PAGE),
     type: 'popup',
@@ -162,6 +186,47 @@ const openQuickSearchWindow = async (): Promise<void> => {
   });
 
   quickSearchWindowId = created.id ?? null;
+  quickSearchSourceWindowId = sourceWindowId;
+  quickSearchSourceTabId = await getActiveTabId(sourceWindowId);
+};
+
+/**
+ * 按快捷搜索设置打开书签，并在需要时将快捷搜索窗口保持在前台。
+ * 入参：待打开书签 URL、是否新标签打开、是否保持快捷搜索窗口前台。
+ * 出参：Promise<void>。
+ */
+const openBookmarkFromQuickSearch = async (
+  url: string,
+  openInNewTab: boolean,
+  keepQuickSearchWindowInForeground: boolean
+): Promise<void> => {
+  const tabCreateProperties =
+    quickSearchSourceWindowId === null
+      ? { url, active: !keepQuickSearchWindowInForeground }
+      : { url, active: !keepQuickSearchWindowInForeground, windowId: quickSearchSourceWindowId };
+
+  if (!openInNewTab && quickSearchSourceTabId !== null) {
+    try {
+      await browser.tabs.update(quickSearchSourceTabId, { url, active: true });
+    } catch {
+      // 来源标签可能已关闭，回退为在来源窗口新建标签以确保书签仍能打开。
+      await browser.tabs.create(tabCreateProperties);
+    }
+  } else {
+    await browser.tabs.create(tabCreateProperties);
+  }
+
+  if (!keepQuickSearchWindowInForeground || quickSearchWindowId === null) {
+    return;
+  }
+
+  try {
+    // 新标签创建后显式夺回焦点，保证用户可连续搜索并多次打开书签。
+    await browser.windows.update(quickSearchWindowId, { focused: true });
+  } catch {
+    // 搜索窗口可能在创建标签期间被关闭；此时无需影响已成功创建的标签。
+    quickSearchWindowId = null;
+  }
 };
 
 browser.bookmarks.onCreated.addListener(() => {
@@ -184,6 +249,8 @@ browser.bookmarks.onMoved.addListener(() => {
 browser.windows.onRemoved.addListener((windowId: number) => {
   if (quickSearchWindowId === windowId) {
     quickSearchWindowId = null;
+    quickSearchSourceWindowId = null;
+    quickSearchSourceTabId = null;
   }
 });
 
@@ -278,6 +345,15 @@ browser.runtime.onMessage.addListener(async (request: RuntimeRequest): Promise<R
       await bookmarkService.remove(request.bookmarkId);
       await rebuildIndexFresh();
       return { ok: true, deletedId: request.bookmarkId };
+    }
+
+    if (request.type === 'quick-search/open-bookmark') {
+      await openBookmarkFromQuickSearch(
+        request.url,
+        request.openInNewTab,
+        request.keepQuickSearchWindowInForeground
+      );
+      return { ok: true, openedInNewTabUrl: request.url };
     }
 
     if (request.type === 'sync/get-status') {

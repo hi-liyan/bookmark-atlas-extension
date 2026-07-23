@@ -7,6 +7,11 @@ export interface EditTagDraft {
   url: string;
 }
 
+export interface QuickSearchBookmarkOpenOptions {
+  openInNewTab: boolean;
+  keepQuickSearchWindowInForeground: boolean;
+}
+
 type MutationRequest =
   | { type: 'bookmarks/update'; bookmarkId: string; title: string; url: string }
   | { type: 'bookmarks/delete'; bookmarkId: string }
@@ -34,17 +39,28 @@ export const loadBookmarkItems = async (): Promise<BookmarkIndexItem[]> => {
 };
 
 /**
- * 打开目标书签到新标签页，并关闭当前快捷搜索窗口。
- * 入参：书签索引项。
+ * 请求背景页按设置打开书签，并根据配置保持快捷搜索窗口在前台。
+ * 入参：书签索引项、打开行为配置。
  * 出参：Promise<void>。
  */
-export const openBookmarkInNewTab = async (item: BookmarkIndexItem): Promise<void> => {
+export const openBookmarkInNewTab = async (
+  item: BookmarkIndexItem,
+  options: QuickSearchBookmarkOpenOptions
+): Promise<void> => {
   if (!item.url) {
     return;
   }
 
-  await browser.tabs.create({ url: item.url });
-  window.close();
+  const response = (await browser.runtime.sendMessage({
+    type: 'quick-search/open-bookmark',
+    url: item.url,
+    openInNewTab: options.openInNewTab,
+    keepQuickSearchWindowInForeground: options.keepQuickSearchWindowInForeground
+  })) as RuntimeResponse;
+
+  if (!response.ok) {
+    throw new Error(response.error);
+  }
 };
 
 /**

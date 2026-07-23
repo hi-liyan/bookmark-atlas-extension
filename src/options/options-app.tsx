@@ -1,6 +1,11 @@
 import { type Dispatch, type SetStateAction, useEffect, useState } from 'react';
 import { browser } from '../shared/browser';
-import type { RuntimeResponse, SyncConfig, SyncStatus } from '../shared/types';
+import {
+  defaultQuickSearchConfig,
+  normalizeQuickSearchConfig,
+  QUICK_SEARCH_CONFIG_STORAGE_KEY
+} from '../shared/quick-search-config';
+import type { QuickSearchConfig, RuntimeResponse, SyncConfig, SyncStatus } from '../shared/types';
 import { testCouchDbConnection, validateConnectionConfig, validateSyncConfigCompleteness } from '../sync';
 
 const STORAGE_KEY = 'sync-config';
@@ -47,6 +52,7 @@ interface ShortcutSettingsNavigationResult {
 }
 
 type SyncConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
+type OptionsTab = 'quick-search' | 'sync' | 'shortcuts' | 'about';
 
 /**
  * 将时间戳格式化为便于阅读的本地时间文本。
@@ -129,13 +135,15 @@ const openBrowserShortcutSettings = async (): Promise<ShortcutSettingsNavigation
 };
 
 export const OptionsApp = () => {
-  // 当前激活 tab：控制设置页三大区域（同步、快捷键、关于）的显示。
-  const [activeTab, setActiveTab] = useState<'sync' | 'shortcuts' | 'about'>('sync');
+  // 当前激活 tab：控制设置页快速搜索、同步、快捷键与关于区域的显示。
+  const [activeTab, setActiveTab] = useState<OptionsTab>('quick-search');
   // 扩展基础信息：从 manifest 读取产品名与版本号，确保展示值与构建产物一致。
   const manifestInfo = browser.runtime.getManifest();
   const productName = manifestInfo.name || 'Bookmark Atlas';
   const productVersion = manifestInfo.version || '-';
   const [config, setConfig] = useState<SyncConfig>(defaultConfig);
+  // 快捷搜索配置：独立于同步设置存储，避免无关配置相互影响。
+  const [quickSearchConfig, setQuickSearchConfig] = useState<QuickSearchConfig>(defaultQuickSearchConfig);
   const [savedMessage, setSavedMessage] = useState('');
   const [shortcutCommands, setShortcutCommands] = useState<ShortcutCommandView[]>([]);
   const [shortcutError, setShortcutError] = useState('');
@@ -156,11 +164,12 @@ export const OptionsApp = () => {
 
   useEffect(() => {
     void (async () => {
-      const stored = await browser.storage.local.get(STORAGE_KEY);
+      const stored = await browser.storage.local.get([STORAGE_KEY, QUICK_SEARCH_CONFIG_STORAGE_KEY]);
       const value = stored[STORAGE_KEY] as SyncConfig | undefined;
       if (value) {
         setConfig(value);
       }
+      setQuickSearchConfig(normalizeQuickSearchConfig(stored[QUICK_SEARCH_CONFIG_STORAGE_KEY]));
     })();
   }, []);
 
@@ -221,12 +230,15 @@ export const OptionsApp = () => {
   }, [activeTab]);
 
   /**
-   * 保存同步配置到本地存储。
+   * 保存同步与快速搜索配置到本地存储。
    * 入参：无。
    * 出参：Promise<void>。
    */
   const save = async (): Promise<void> => {
-    await browser.storage.local.set({ [STORAGE_KEY]: config });
+    await browser.storage.local.set({
+      [STORAGE_KEY]: config,
+      [QUICK_SEARCH_CONFIG_STORAGE_KEY]: quickSearchConfig
+    });
     setSavedMessage('设置已保存');
     setTimeout(() => setSavedMessage(''), 1500);
   };
@@ -372,7 +384,7 @@ export const OptionsApp = () => {
               <h1 className="text-2xl font-semibold">扩展设置</h1>
               <p className="text-sm text-slate-500">Bookmark Atlas 扩展设置页。</p>
             </div>
-            {activeTab === 'sync' ? (
+            {activeTab === 'sync' || activeTab === 'quick-search' ? (
               <div className="flex items-center gap-3">
                 {savedMessage ? <span className="text-sm text-[#138052]">{savedMessage}</span> : null}
                 <button
@@ -388,8 +400,19 @@ export const OptionsApp = () => {
         </header>
 
         <div className="rounded-[15px] border border-slate-200 bg-white p-4 md:p-5">
-          {/* Tab 导航区：切换同步、快捷键与关于三个设置分组 */}
+          {/* Tab 导航区：切换快速搜索、同步、快捷键与关于四个设置分组。 */}
           <div className="mb-4 inline-flex w-fit rounded-[10px] bg-[#EFF3F7] p-1">
+            <button
+              className={`rounded-[8px] px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'quick-search'
+                  ? 'bg-white text-[#138052] shadow-sm ring-1 ring-[#138052]/20'
+                  : 'text-slate-600 hover:bg-white/80 hover:text-[#138052]'
+              }`}
+              onClick={() => setActiveTab('quick-search')}
+              type="button"
+            >
+              快速搜索
+            </button>
             <button
               className={`rounded-[8px] px-4 py-2 text-sm font-medium transition ${
                 activeTab === 'sync'
@@ -424,6 +447,74 @@ export const OptionsApp = () => {
               关于
             </button>
           </div>
+
+          {activeTab === 'quick-search' ? (
+            <section>
+              {/* 快速搜索配置总览：集中说明书签打开方式与窗口关闭策略。 */}
+              <div className="rounded-[12px] border border-[#138052]/20 bg-[#138052]/5 p-4">
+                <h2 className="text-lg font-semibold text-slate-800">快速搜索</h2>
+                <p className="mt-1 text-sm text-slate-600">配置书签打开位置，以及普通点击和右键菜单操作后的窗口行为。</p>
+                <div className="mt-4 space-y-3">
+                  {/* 普通点击打开位置：决定结果列表点击或 Enter 是否在来源浏览器窗口中新建标签。 */}
+                  <label className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-slate-200 bg-white px-3 py-3">
+                    <input
+                      checked={quickSearchConfig.openBookmarkInNewTab}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#138052] focus:ring-[#138052]/30"
+                      onChange={(event) =>
+                        setQuickSearchConfig((previous) => ({
+                          ...previous,
+                          openBookmarkInNewTab: event.target.checked
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-slate-700">点击书签在新标签页打开</span>
+                      <span className="mt-1 block text-xs text-slate-500">关闭后会复用快捷键触发前的浏览器标签页打开书签。</span>
+                    </span>
+                  </label>
+
+                  {/* 普通点击窗口行为：决定结果列表点击或 Enter 打开书签后是否关闭搜索弹窗。 */}
+                  <label className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-slate-200 bg-white px-3 py-3">
+                    <input
+                      checked={quickSearchConfig.closeWindowAfterBookmarkClick}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#138052] focus:ring-[#138052]/30"
+                      onChange={(event) =>
+                        setQuickSearchConfig((previous) => ({
+                          ...previous,
+                          closeWindowAfterBookmarkClick: event.target.checked
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-slate-700">点击书签后关闭窗口</span>
+                      <span className="mt-1 block text-xs text-slate-500">关闭后将把焦点交给已打开书签所在的浏览器窗口。</span>
+                    </span>
+                  </label>
+
+                  {/* 右键菜单窗口行为：右键菜单始终新标签打开，本开关只决定打开后的窗口关闭策略。 */}
+                  <label className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-slate-200 bg-white px-3 py-3">
+                    <input
+                      checked={quickSearchConfig.closeWindowAfterContextMenuOpen}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#138052] focus:ring-[#138052]/30"
+                      onChange={(event) =>
+                        setQuickSearchConfig((previous) => ({
+                          ...previous,
+                          closeWindowAfterContextMenuOpen: event.target.checked
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-slate-700">右键新标签页打开书签后关闭窗口</span>
+                      <span className="mt-1 block text-xs text-slate-500">关闭后右键菜单中的“在新标签中打开”会关闭快速搜索窗口。</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           {activeTab === 'sync' ? (
             <section>
@@ -746,7 +837,7 @@ export const OptionsApp = () => {
                 </table>
               </div>
             </section>
-          ) : (
+          ) : activeTab === 'about' ? (
             <section>
               {/* 关于页头图：突出产品品牌信息与定位说明。 */}
               <header className="mb-4 rounded-[14px] border border-[#138052]/20 bg-gradient-to-br from-[#138052]/10 via-white to-[#EFF3F7] p-5">
@@ -788,7 +879,7 @@ export const OptionsApp = () => {
                 </div>
               </div>
             </section>
-          )}
+          ) : null}
         </div>
       </section>
     </main>

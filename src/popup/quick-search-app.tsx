@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { X } from 'lucide-react';
+import { browser } from '../shared/browser';
+import {
+  defaultQuickSearchConfig,
+  normalizeQuickSearchConfig,
+  QUICK_SEARCH_CONFIG_STORAGE_KEY
+} from '../shared/quick-search-config';
 import type { BookmarkIndexItem } from '../shared/types';
 import { BookmarkFavicon } from './bookmark-favicon';
 import {
@@ -36,6 +42,8 @@ export const QuickSearchApp = () => {
   const [editFormError, setEditFormError] = useState('');
   const [submittingAction, setSubmittingAction] = useState(false);
   const [contextMenu, setContextMenu] = useState<BookmarkContextMenuState | null>(null);
+  // 快捷搜索行为配置：控制普通点击和右键“新标签打开”后的窗口处理方式。
+  const [quickSearchConfig, setQuickSearchConfig] = useState(defaultQuickSearchConfig);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -72,6 +80,25 @@ export const QuickSearchApp = () => {
 
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const stored = await browser.storage.local.get(QUICK_SEARCH_CONFIG_STORAGE_KEY);
+        if (!cancelled) {
+          setQuickSearchConfig(normalizeQuickSearchConfig(stored[QUICK_SEARCH_CONFIG_STORAGE_KEY]));
+        }
+      } catch {
+        // 配置读取失败时沿用默认值，保证快速搜索仍可使用。
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const results = useMemo(() => buildQuickSearchResults(allItems, query, 30), [allItems, query]);
@@ -174,7 +201,7 @@ export const QuickSearchApp = () => {
   ): void => {
     event.preventDefault();
     const MENU_WIDTH = 170;
-    const MENU_HEIGHT = 96;
+    const MENU_HEIGHT = 144;
     const EDGE_PADDING = 8;
 
     const x = Math.max(
@@ -188,6 +215,49 @@ export const QuickSearchApp = () => {
 
     setActiveIndex(index);
     setContextMenu({ x, y, item });
+  };
+
+  /**
+   * 按当前配置打开书签，并在指定场景需要关闭时关闭快捷搜索窗口。
+   * 入参：书签项、是否强制新标签打开、打开完成后是否关闭窗口。
+   * 出参：Promise<void>。
+   */
+  const openBookmarkWithConfiguredBehavior = async (
+    item: BookmarkIndexItem,
+    openInNewTab: boolean,
+    closeWindowAfterOpen: boolean
+  ): Promise<void> => {
+    try {
+      setActionError('');
+      await openBookmarkInNewTab(item, {
+        openInNewTab,
+        keepQuickSearchWindowInForeground: !closeWindowAfterOpen
+      });
+      if (closeWindowAfterOpen) {
+        window.close();
+      }
+    } catch (openError) {
+      const message = openError instanceof Error ? openError.message : '打开书签失败';
+      setActionError(message);
+    }
+  };
+
+  /**
+   * 在新标签页打开右键菜单对应书签，并按右键操作配置处理窗口。
+   * 入参：无。
+   * 出参：Promise<void>。
+   */
+  const openContextMenuItemInNewTab = async (): Promise<void> => {
+    if (!contextMenu) {
+      return;
+    }
+
+    await openBookmarkWithConfiguredBehavior(
+      contextMenu.item,
+      true,
+      quickSearchConfig.closeWindowAfterContextMenuOpen
+    );
+    setContextMenu(null);
   };
 
   /**
@@ -302,7 +372,11 @@ export const QuickSearchApp = () => {
                   if (activeIndex < 0 || activeIndex >= results.length) {
                     return;
                   }
-                  void openBookmarkInNewTab(results[activeIndex]);
+                  void openBookmarkWithConfiguredBehavior(
+                    results[activeIndex],
+                    quickSearchConfig.openBookmarkInNewTab,
+                    quickSearchConfig.closeWindowAfterBookmarkClick
+                  );
                   return;
                 }
 
@@ -351,7 +425,11 @@ export const QuickSearchApp = () => {
                       onMouseEnter={() => setActiveIndex(index)}
                       onContextMenu={(event) => openContextMenu(event, item, index)}
                       onClick={() => {
-                        void openBookmarkInNewTab(item);
+                        void openBookmarkWithConfiguredBehavior(
+                          item,
+                          quickSearchConfig.openBookmarkInNewTab,
+                          quickSearchConfig.closeWindowAfterBookmarkClick
+                        );
                       }}
                       type="button"
                     >
@@ -382,7 +460,19 @@ export const QuickSearchApp = () => {
           className="fixed z-30 w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          {/* 右键菜单：承载快捷搜索内的标签编辑与删除操作 */}
+          {/* 右键菜单：优先提供新标签打开，再提供标签编辑与删除操作。 */}
+          <button
+            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={submittingAction}
+            onClick={() => {
+              void openContextMenuItemInNewTab();
+            }}
+            type="button"
+          >
+            在新标签中打开
+          </button>
+          {/* 菜单分隔线：区分打开操作与会修改书签数据的操作。 */}
+          <div aria-hidden="true" className="my-1 border-t border-slate-200" />
           <button
             className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={submittingAction}

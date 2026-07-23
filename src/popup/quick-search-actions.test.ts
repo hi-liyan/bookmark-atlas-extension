@@ -1,7 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BookmarkIndexItem } from '../shared/types';
-import { buildEditTagDraft, validateEditTagDraft } from './quick-search-actions';
 
+const mockedBrowser = vi.hoisted(() => ({
+  sendMessage: vi.fn()
+}));
+
+vi.mock('../shared/browser', () => ({
+  browser: {
+    runtime: {
+      sendMessage: mockedBrowser.sendMessage
+    }
+  }
+}));
+
+import { buildEditTagDraft, openBookmarkInNewTab, validateEditTagDraft } from './quick-search-actions';
 /**
  * 构造标签草稿测试用书签，避免重复样板。
  */
@@ -13,6 +25,51 @@ const createItem = (partial: Partial<BookmarkIndexItem> & Pick<BookmarkIndexItem
   urlNorm: partial.urlNorm ?? '',
   parentId: partial.parentId,
   path: partial.path ?? []
+});
+
+afterEach(() => {
+  mockedBrowser.sendMessage.mockReset();
+});
+
+describe('openBookmarkInNewTab', () => {
+  it('should ask the background page to open a tab while preserving the quick search foreground state', async () => {
+    mockedBrowser.sendMessage.mockResolvedValue({
+      ok: true,
+      openedInNewTabUrl: 'https://example.com/open'
+    });
+    const item = createItem({
+      id: 'bookmark-open',
+      title: 'Open target',
+      url: 'https://example.com/open'
+    });
+
+    await openBookmarkInNewTab(item, {
+      openInNewTab: true,
+      keepQuickSearchWindowInForeground: true
+    });
+
+    expect(mockedBrowser.sendMessage).toHaveBeenCalledWith({
+      type: 'quick-search/open-bookmark',
+      url: 'https://example.com/open',
+      openInNewTab: true,
+      keepQuickSearchWindowInForeground: true
+    });
+  });
+
+  it('should skip bookmarks without a URL', async () => {
+    await openBookmarkInNewTab(
+      createItem({
+        id: 'bookmark-without-url',
+        title: 'No URL'
+      }),
+      {
+        openInNewTab: false,
+        keepQuickSearchWindowInForeground: false
+      }
+    );
+
+    expect(mockedBrowser.sendMessage).not.toHaveBeenCalled();
+  });
 });
 
 describe('buildEditTagDraft', () => {
