@@ -137,9 +137,10 @@ const openBrowserShortcutSettings = async (): Promise<ShortcutSettingsNavigation
 export const OptionsApp = () => {
   // 当前激活 tab：控制设置页快速搜索、同步、快捷键与关于区域的显示。
   const [activeTab, setActiveTab] = useState<OptionsTab>('quick-search');
-  // 扩展基础信息：从 manifest 读取产品名与版本号，确保展示值与构建产物一致。
+  // 扩展基础信息：品牌名仅用于 UI 展示，版本号仍从 manifest 读取以保持与构建产物一致。
   const manifestInfo = browser.runtime.getManifest();
-  const productName = manifestInfo.name || 'Bookmark Atlas';
+  const productName = '快书签';
+  const productSlogan = 'Find it. Open it. Instantly.';
   const productVersion = manifestInfo.version || '-';
   const [config, setConfig] = useState<SyncConfig>(defaultConfig);
   // 快捷搜索配置：独立于同步设置存储，避免无关配置相互影响。
@@ -377,12 +378,12 @@ export const OptionsApp = () => {
     <main className="min-h-screen bg-[#EFF3F7] px-4 py-6 text-slate-800 md:px-6">
       {/* 页面主体容器：统一控制最大宽度，避免信息过宽导致阅读困难 */}
       <section className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-        {/* 顶部标题栏：展示设置页定位和主操作按钮 */}
+        {/* 顶部标题栏：展示产品品牌、宣传语和主操作按钮 */}
         <header className="rounded-[15px] border border-slate-200 bg-white p-4 md:p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold">扩展设置</h1>
-              <p className="text-sm text-slate-500">Bookmark Atlas 扩展设置页。</p>
+              <h1 className="text-2xl font-semibold">{productName}</h1>
+              <p className="text-sm text-slate-500">{productSlogan}</p>
             </div>
             {activeTab === 'sync' || activeTab === 'quick-search' ? (
               <div className="flex items-center gap-3">
@@ -843,7 +844,8 @@ export const OptionsApp = () => {
               <header className="mb-4 rounded-[14px] border border-[#138052]/20 bg-gradient-to-br from-[#138052]/10 via-white to-[#EFF3F7] p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#138052]">About</p>
                 <h2 className="mt-2 text-2xl font-semibold text-slate-800">{productName}</h2>
-                <p className="mt-2 text-sm text-slate-600">本扩展用于高效管理书签并提供快速检索与同步能力。</p>
+                <p className="mt-2 text-sm font-medium text-[#138052]">{productSlogan}</p>
+                <p className="mt-1 text-sm text-slate-600">快速找到想要的书签，立即打开。</p>
               </header>
 
               {/* 关于信息卡：展示产品名、版本、作者与开源地址。 */}
@@ -862,7 +864,7 @@ export const OptionsApp = () => {
                   {/* 作者信息行：展示作者署名。 */}
                   <div className="flex flex-col gap-1 border-b border-slate-100 pb-3 md:flex-row md:items-center md:justify-between">
                     <span className="text-sm font-medium text-slate-500">作者</span>
-                    <span className="text-sm font-semibold text-slate-800">李炎</span>
+                    <span className="text-sm font-semibold text-slate-800">我在火星堆雪人</span>
                   </div>
                   {/* GitHub 信息行：提供项目仓库链接。 */}
                   <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">

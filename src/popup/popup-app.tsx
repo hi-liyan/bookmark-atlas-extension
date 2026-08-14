@@ -791,12 +791,12 @@ export const PopupApp = () => {
       {/* 顶部信息与操作区：左侧产品信息，右侧设置与刷新按钮。 */}
       <div className="mb-2 flex items-start justify-between gap-3 px-1">
         <div>
-          {/* 应用标题：展示产品名、专用标识与动态版本号。 */}
+          {/* 应用品牌区：展示产品名、宣传语与动态版本号。 */}
           <h1 className="flex items-end gap-2 text-lg font-semibold tracking-wide">
-            <span>Bookmark Atlas</span>
-            <span className="pb-0.5 text-xs font-medium text-slate-500">牛聪专用版</span>
+            <span>快书签</span>
             <span className="pb-0.5 text-xs font-normal text-slate-400">v{extensionVersion}</span>
           </h1>
+          <p className="mt-0.5 text-xs text-slate-500">Find it. Open it. Instantly.</p>
         </div>
         <div className="flex items-center gap-2 pt-0.5">
           <button

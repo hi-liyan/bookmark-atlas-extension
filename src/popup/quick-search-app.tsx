@@ -9,13 +9,13 @@ import {
 import type { BookmarkIndexItem } from '../shared/types';
 import { BookmarkFavicon } from './bookmark-favicon';
 import {
-  buildEditTagDraft,
-  deleteTagFromQuickSearch,
-  type EditTagDraft,
+  buildEditBookmarkDraft,
+  deleteBookmarkFromQuickSearch,
+  type EditBookmarkDraft,
   loadBookmarkItems,
   openBookmarkInNewTab,
-  updateTagFromQuickSearch,
-  validateEditTagDraft
+  updateBookmarkFromQuickSearch,
+  validateEditBookmarkDraft
 } from './quick-search-actions';
 import { applyBookmarkEditOptimistically } from './index-items';
 import { resolveQuickSearchEscapeAction } from './quick-search-keyboard';
@@ -28,7 +28,7 @@ interface BookmarkContextMenuState {
 }
 
 /**
- * 快捷搜索主界面：支持键盘导航、回车打开与标签编辑删除。
+ * 快捷搜索主界面：支持键盘导航、回车打开与书签编辑删除。
  */
 export const QuickSearchApp = () => {
   const [allItems, setAllItems] = useState<BookmarkIndexItem[]>([]);
@@ -37,7 +37,7 @@ export const QuickSearchApp = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
-  const [editingDraft, setEditingDraft] = useState<EditTagDraft | null>(null);
+  const [editingDraft, setEditingDraft] = useState<EditBookmarkDraft | null>(null);
   const [deletingItem, setDeletingItem] = useState<BookmarkIndexItem | null>(null);
   const [editFormError, setEditFormError] = useState('');
   const [submittingAction, setSubmittingAction] = useState(false);
@@ -261,16 +261,16 @@ export const QuickSearchApp = () => {
   };
 
   /**
-   * 提交标签编辑：先乐观更新列表，再提交后端并在失败时回滚。
+   * 提交书签编辑：先乐观更新列表，再提交后端并在失败时回滚。
    * 入参：无。
    * 出参：Promise<void>。
    */
-  const submitEditTag = async (): Promise<void> => {
+  const submitEditBookmark = async (): Promise<void> => {
     if (!editingDraft) {
       return;
     }
 
-    const validation = validateEditTagDraft(editingDraft);
+    const validation = validateEditBookmarkDraft(editingDraft);
     if (!validation.ok) {
       setEditFormError(validation.error);
       return;
@@ -282,7 +282,7 @@ export const QuickSearchApp = () => {
 
     // 先在本地更新列表，避免依赖索引回读导致用户看不到最新编辑结果。
     const previousItems = allItems;
-    const normalizedDraft: EditTagDraft = {
+    const normalizedDraft: EditBookmarkDraft = {
       ...editingDraft,
       title: validation.title,
       url: validation.url
@@ -296,11 +296,11 @@ export const QuickSearchApp = () => {
     );
 
     try {
-      await updateTagFromQuickSearch(normalizedDraft);
+      await updateBookmarkFromQuickSearch(normalizedDraft);
       setEditingDraft(null);
       setContextMenu(null);
     } catch (submitError) {
-      const message = submitError instanceof Error ? submitError.message : '编辑标签失败';
+      const message = submitError instanceof Error ? submitError.message : '编辑书签失败';
       setAllItems(previousItems);
       setActionError(message);
     } finally {
@@ -309,11 +309,11 @@ export const QuickSearchApp = () => {
   };
 
   /**
-   * 确认删除标签：先乐观移除列表项，失败时回滚并提示错误。
+   * 确认删除书签：先乐观移除列表项，失败时回滚并提示错误。
    * 入参：无。
    * 出参：Promise<void>。
    */
-  const confirmDeleteTag = async (): Promise<void> => {
+  const confirmDeleteBookmark = async (): Promise<void> => {
     if (!deletingItem) {
       return;
     }
@@ -326,11 +326,11 @@ export const QuickSearchApp = () => {
     setAllItems((items) => items.filter((item) => item.id !== targetBookmarkId));
 
     try {
-      await deleteTagFromQuickSearch(targetBookmarkId);
+      await deleteBookmarkFromQuickSearch(targetBookmarkId);
       setDeletingItem(null);
       setContextMenu(null);
     } catch (deleteError) {
-      const message = deleteError instanceof Error ? deleteError.message : '删除标签失败';
+      const message = deleteError instanceof Error ? deleteError.message : '删除书签失败';
       // 删除失败时回滚乐观更新，避免列表丢失但实际数据仍存在。
       setAllItems(previousItems);
       setActionError(message);
@@ -394,7 +394,7 @@ export const QuickSearchApp = () => {
               </button>
             ) : null}
           </label>
-          <p className="mt-2 text-xs text-slate-500">方向键选择，Enter 新标签打开，右键可编辑/删除标签</p>
+          <p className="mt-2 text-xs text-slate-500">方向键选择，Enter 新标签打开，右键可编辑/删除书签</p>
         </header>
 
         {/* 列表区域：展示搜索候选项并支持鼠标点击打开 */}
@@ -460,7 +460,7 @@ export const QuickSearchApp = () => {
           className="fixed z-30 w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          {/* 右键菜单：优先提供新标签打开，再提供标签编辑与删除操作。 */}
+          {/* 右键菜单：优先提供新标签打开，再提供书签编辑与删除操作。 */}
           <button
             className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={submittingAction}
@@ -479,12 +479,12 @@ export const QuickSearchApp = () => {
             onClick={() => {
               setActionError('');
               setEditFormError('');
-              setEditingDraft(buildEditTagDraft(contextMenu.item));
+              setEditingDraft(buildEditBookmarkDraft(contextMenu.item));
               setContextMenu(null);
             }}
             type="button"
           >
-            编辑标签
+            编辑书签
           </button>
           <button
             className="w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -496,17 +496,17 @@ export const QuickSearchApp = () => {
             }}
             type="button"
           >
-            删除标签
+            删除书签
           </button>
         </div>
       ) : null}
 
       {editingDraft ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          {/* 标签编辑弹窗：支持直接修改标题与 URL */}
+          {/* 书签编辑弹窗：支持直接修改标题与 URL */}
           <div className="w-full max-w-md rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
-            <h3 className="mb-3 text-base font-semibold text-slate-800">编辑标签</h3>
-            <label className="mb-2 block text-xs font-medium text-slate-600">标签标题</label>
+            <h3 className="mb-3 text-base font-semibold text-slate-800">编辑书签</h3>
+            <label className="mb-2 block text-xs font-medium text-slate-600">书签标题</label>
             <input
               className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               disabled={submittingAction}
@@ -518,7 +518,7 @@ export const QuickSearchApp = () => {
               }
               type="text"
             />
-            <label className="mb-2 block text-xs font-medium text-slate-600">标签 URL</label>
+            <label className="mb-2 block text-xs font-medium text-slate-600">书签 URL</label>
             <input
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#138052]"
               disabled={submittingAction}
@@ -547,7 +547,7 @@ export const QuickSearchApp = () => {
                 className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={submittingAction}
                 onClick={() => {
-                  void submitEditTag();
+                  void submitEditBookmark();
                 }}
                 type="button"
               >
@@ -560,9 +560,9 @@ export const QuickSearchApp = () => {
 
       {deletingItem ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-4">
-          {/* 标签删除确认弹窗：满足二次确认后才执行删除 */}
+          {/* 书签删除确认弹窗：满足二次确认后才执行删除 */}
           <div className="w-full max-w-sm rounded-[15px] border border-slate-200 bg-white p-4 shadow-xl">
-            <h3 className="mb-2 text-base font-semibold text-slate-800">删除标签</h3>
+            <h3 className="mb-2 text-base font-semibold text-slate-800">删除书签</h3>
             <p className="mb-4 text-sm text-slate-600">
               确认删除“{deletingItem.title || '未命名书签'}”？该操作不可撤销。
             </p>
@@ -579,7 +579,7 @@ export const QuickSearchApp = () => {
                 className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={submittingAction}
                 onClick={() => {
-                  void confirmDeleteTag();
+                  void confirmDeleteBookmark();
                 }}
                 type="button"
               >

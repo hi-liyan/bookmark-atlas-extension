@@ -1,7 +1,7 @@
 import { browser } from '../shared/browser';
 import type { BookmarkIndexItem, RuntimeRequest, RuntimeResponse } from '../shared/types';
 
-export interface EditTagDraft {
+export interface EditBookmarkDraft {
   id: string;
   title: string;
   url: string;
@@ -17,7 +17,7 @@ type MutationRequest =
   | { type: 'bookmarks/delete'; bookmarkId: string }
   | { type: 'bookmarks/rebuild-index' };
 
-export type EditTagDraftValidationResult =
+export type EditBookmarkDraftValidationResult =
   | { ok: true; title: string; url: string }
   | { ok: false; error: string };
 
@@ -64,38 +64,38 @@ export const openBookmarkInNewTab = async (
 };
 
 /**
- * 根据书签项构建标签编辑草稿，供弹窗表单初始化。
+ * 根据书签项构建书签编辑草稿，供弹窗表单初始化。
  * 入参：书签索引项。
- * 出参：可编辑的标签草稿。
+ * 出参：可编辑的书签草稿。
  */
-export const buildEditTagDraft = (item: BookmarkIndexItem): EditTagDraft => ({
+export const buildEditBookmarkDraft = (item: BookmarkIndexItem): EditBookmarkDraft => ({
   id: item.id,
   title: item.title,
   url: item.url ?? ''
 });
 
 /**
- * 校验并清洗标签编辑草稿，确保提交前 URL 不为空。
- * 入参：标签编辑草稿。
+ * 校验并清洗书签编辑草稿，确保提交前 URL 不为空。
+ * 入参：书签编辑草稿。
  * 出参：校验结果（成功返回清洗后的 title/url，失败返回错误文案）。
  */
-export const validateEditTagDraft = (draft: EditTagDraft): EditTagDraftValidationResult => {
+export const validateEditBookmarkDraft = (draft: EditBookmarkDraft): EditBookmarkDraftValidationResult => {
   const title = draft.title.trim();
   const url = draft.url.trim();
   if (!url) {
-    return { ok: false, error: '标签 URL 不能为空' };
+    return { ok: false, error: '书签 URL 不能为空' };
   }
 
   return { ok: true, title, url };
 };
 
 /**
- * 执行快捷搜索内的标签更新：先更新书签，再强制重建索引。
- * 入参：标签编辑草稿。
+ * 执行快捷搜索内的书签更新：先更新书签，再强制重建索引。
+ * 入参：书签编辑草稿。
  * 出参：Promise<void>。
  */
-export const updateTagFromQuickSearch = async (draft: EditTagDraft): Promise<void> => {
-  const validation = validateEditTagDraft(draft);
+export const updateBookmarkFromQuickSearch = async (draft: EditBookmarkDraft): Promise<void> => {
+  const validation = validateEditBookmarkDraft(draft);
   if (!validation.ok) {
     throw new Error(validation.error);
   }
@@ -110,11 +110,11 @@ export const updateTagFromQuickSearch = async (draft: EditTagDraft): Promise<voi
 };
 
 /**
- * 执行快捷搜索内的标签删除：删除书签后重建索引，保证结果集与缓存一致。
+ * 执行快捷搜索内的书签删除：删除书签后重建索引，保证结果集与缓存一致。
  * 入参：书签 ID。
  * 出参：Promise<void>。
  */
-export const deleteTagFromQuickSearch = async (bookmarkId: string): Promise<void> => {
+export const deleteBookmarkFromQuickSearch = async (bookmarkId: string): Promise<void> => {
   await runMutation({ type: 'bookmarks/delete', bookmarkId });
   await runMutation({ type: 'bookmarks/rebuild-index' });
 };

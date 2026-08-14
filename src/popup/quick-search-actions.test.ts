@@ -13,9 +13,9 @@ vi.mock('../shared/browser', () => ({
   }
 }));
 
-import { buildEditTagDraft, openBookmarkInNewTab, validateEditTagDraft } from './quick-search-actions';
+import { buildEditBookmarkDraft, openBookmarkInNewTab, validateEditBookmarkDraft } from './quick-search-actions';
 /**
- * 构造标签草稿测试用书签，避免重复样板。
+ * 构造书签草稿测试用书签，避免重复样板。
  */
 const createItem = (partial: Partial<BookmarkIndexItem> & Pick<BookmarkIndexItem, 'id'>): BookmarkIndexItem => ({
   id: partial.id,
@@ -72,7 +72,7 @@ describe('openBookmarkInNewTab', () => {
   });
 });
 
-describe('buildEditTagDraft', () => {
+describe('buildEditBookmarkDraft', () => {
   it('should build draft from bookmark item', () => {
     const item = createItem({
       id: 'bookmark-1',
@@ -80,7 +80,7 @@ describe('buildEditTagDraft', () => {
       url: 'https://example.com/alpha'
     });
 
-    const draft = buildEditTagDraft(item);
+    const draft = buildEditBookmarkDraft(item);
     expect(draft).toEqual({
       id: 'bookmark-1',
       title: 'Alpha',
@@ -94,14 +94,14 @@ describe('buildEditTagDraft', () => {
       title: 'Folder like item'
     });
 
-    const draft = buildEditTagDraft(item);
+    const draft = buildEditBookmarkDraft(item);
     expect(draft.url).toBe('');
   });
 });
 
-describe('validateEditTagDraft', () => {
+describe('validateEditBookmarkDraft', () => {
   it('should trim title and url when draft is valid', () => {
-    const result = validateEditTagDraft({
+    const result = validateEditBookmarkDraft({
       id: 'bookmark-3',
       title: '  Alpha Docs  ',
       url: '  https://example.com/docs  '
@@ -115,7 +115,7 @@ describe('validateEditTagDraft', () => {
   });
 
   it('should reject empty url draft', () => {
-    const result = validateEditTagDraft({
+    const result = validateEditBookmarkDraft({
       id: 'bookmark-4',
       title: 'No URL',
       url: '   '
@@ -123,7 +123,7 @@ describe('validateEditTagDraft', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: '标签 URL 不能为空'
+      error: '书签 URL 不能为空'
     });
   });
 });
