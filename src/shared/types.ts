@@ -1,4 +1,4 @@
-export type BookmarkNodeType = 'bookmark' | 'folder';
+export type BookmarkNodeType = 'bookmark' | 'folder' | 'separator';
 
 export interface BookmarkNode {
   id: string;
@@ -28,21 +28,70 @@ export interface BookmarkIndexSnapshot {
   items: BookmarkIndexItem[];
 }
 
+export interface SyncRemoteSnapshot {
+  updatedAt: number;
+  tree: BookmarkNode[];
+}
+
+export interface SyncStatus {
+  running: boolean;
+  lastSyncAt: number | null;
+  lastSuccessAt: number | null;
+  lastError: string;
+  lastSyncSeq: string;
+  lastMode: SyncMode | null;
+  lastLocalSnapshotAt: number;
+  pushedCount: number;
+  pulledCount: number;
+  retryCount: number;
+}
+
+export interface SyncExecutionResult {
+  startedAt: number;
+  finishedAt: number;
+  mode: SyncMode;
+  pushedCount: number;
+  pulledCount: number;
+  retryCount: number;
+  lastSyncSeq: string;
+  message: string;
+}
+
 export type RuntimeRequest =
   | { type: 'bookmarks/get-tree' }
   | { type: 'bookmarks/get-index' }
   | { type: 'bookmarks/rebuild-index' }
   | { type: 'bookmarks/move'; bookmarkId: string; parentId: string }
+  | { type: 'bookmarks/move-folder'; folderId: string; parentId: string }
+  | { type: 'bookmarks/create-folder'; parentId: string; title: string }
+  | { type: 'bookmarks/create-bookmark'; parentId: string; title: string; url: string }
+  | { type: 'bookmarks/delete-folder'; folderId: string }
+  | { type: 'bookmarks/rename-folder'; folderId: string; title: string }
   | { type: 'bookmarks/update'; bookmarkId: string; title: string; url: string }
-  | { type: 'bookmarks/delete'; bookmarkId: string };
+  | { type: 'bookmarks/delete'; bookmarkId: string }
+  | {
+      type: 'quick-search/open-bookmark';
+      url: string;
+      openInNewTab: boolean;
+      keepQuickSearchWindowInForeground: boolean;
+    }
+  | { type: 'sync/get-status' }
+  | { type: 'sync/run-now'; config?: SyncConfig };
 
 export type RuntimeResponse =
   | { ok: true; tree: BookmarkNode[] }
   | { ok: true; index: BookmarkIndexSnapshot }
   | { ok: true; rebuiltAt: number }
   | { ok: true; movedId: string }
+  | { ok: true; movedFolderId: string }
+  | { ok: true; created: BookmarkNode }
+  | { ok: true; deletedFolderId: string }
+  | { ok: true; renamedFolderId: string }
   | { ok: true; updatedId: string }
   | { ok: true; deletedId: string }
+  | { ok: true; openedInNewTabUrl: string }
+  | { ok: true; syncStatus: SyncStatus }
+  | { ok: true; syncResult: SyncExecutionResult }
   | { ok: false; error: string };
 
 export type SyncMode = 'two-way' | 'push-only' | 'pull-only';
@@ -59,4 +108,10 @@ export interface SyncConfig {
   conflictPolicy: ConflictPolicy;
   autoSyncOnChange: boolean;
   verifySSL: boolean;
+}
+
+export interface QuickSearchConfig {
+  openBookmarkInNewTab: boolean;
+  closeWindowAfterBookmarkClick: boolean;
+  closeWindowAfterContextMenuOpen: boolean;
 }

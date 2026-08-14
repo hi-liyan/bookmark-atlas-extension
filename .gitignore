@@ -3,3 +3,6 @@ dist/
 output/
 .DS_Store
 *.log
+
+# codex
+.codex/

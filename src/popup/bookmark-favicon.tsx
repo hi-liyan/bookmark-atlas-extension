@@ -42,6 +42,7 @@ export const BookmarkFavicon = ({ url, title, sizeClassName = 'h-5 w-5' }: Bookm
       alt=""
       aria-hidden
       className={`${sizeClassName} shrink-0 rounded`}
+      draggable={false}
       loading="lazy"
       src={currentFaviconUrl}
       onError={() => {
